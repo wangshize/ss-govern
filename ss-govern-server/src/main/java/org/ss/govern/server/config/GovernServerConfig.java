@@ -3,8 +3,6 @@ package org.ss.govern.server.config;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.ss.govern.server.ConfigurationException;
-import org.ss.govern.utils.ConfigValidates;
-import org.ss.govern.utils.StringUtils;
 
 import java.io.File;
 import java.io.FileInputStream;
@@ -39,31 +37,33 @@ public class GovernServerConfig {
     private String nodeRole;
 
     /**
+     * master节点列表
+     */
+    private String masterNodeServers;
+
+    /**
      * 解析配置文件
      *
      * @param configPath
      */
     public void parse(String configPath) throws ConfigurationException {
         try {
-            File configFile = new File(configPath);
-            if (!configFile.exists()) {
-                throw new IllegalArgumentException("config file " + configPath + " not found");
+            LOG.info("going to parse configuration file: " + configPath);
+            Properties configProperties;
+            configProperties = loadConfigurationFIle(configPath);
+            LOG.info("successfully loading configuration from file " + configPath);
+            String nodeRole = configProperties.getProperty("node.role");
+            if (ConfigValidates.checkNodeRole(nodeRole)) {
+                this.nodeRole = nodeRole;
+                if (LOG.isDebugEnabled()) {
+                    LOG.debug("debug parameter value : master.role=" + nodeRole);
+                }
             }
-            try (FileInputStream fis = new FileInputStream(configFile)) {
-                Properties configProperties = new Properties();
-                configProperties.load(fis);
-                LOG.info("successfully loading configuration from file " + configPath);
-                String nodeRole = configProperties.getProperty("node.role");
-                if (StringUtils.isNotEmpty(nodeRole)) {
-                    if (!ConfigValidates.checkNodeRole(nodeRole)) {
-                        throw new IllegalArgumentException("config node.type must be master or slave");
-                    }
-                    if (LOG.isDebugEnabled()) {
-                        LOG.debug("nodeRole in properties is " + nodeRole);
-                    }
-                    this.nodeRole = nodeRole;
-                } else {
-                    throw new IllegalArgumentException("config node.role can not be null");
+            String masterNodeServers = configProperties.getProperty("master.node.servers");
+            if(ConfigValidates.checkMasterNodeServers(masterNodeServers)) {
+                this.masterNodeServers = masterNodeServers;
+                if(LOG.isDebugEnabled()) {
+                    LOG.debug("debug parameter value : master.node.servers=" + masterNodeServers);
                 }
             }
             LOG.info("successfully validation all configuration entries");
@@ -74,5 +74,23 @@ public class GovernServerConfig {
         } catch (IOException e) {
             throw new ConfigurationException("error processing IO " + configPath, e);
         }
+    }
+
+    private Properties loadConfigurationFIle(String configPath) throws IOException {
+        Properties configProperties;
+        File configFile = new File(configPath);
+        if (!configFile.exists()) {
+            throw new IllegalArgumentException("config file " + configPath + " not found");
+        }
+        try (FileInputStream fis = new FileInputStream(configFile)) {
+            configProperties = new Properties();
+            configProperties.load(fis);
+
+        }
+        return configProperties;
+    }
+
+    public String getNodeRole() {
+        return this.nodeRole;
     }
 }

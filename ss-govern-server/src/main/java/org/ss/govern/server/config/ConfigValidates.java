@@ -1,10 +1,14 @@
-package org.ss.govern.utils;
+package org.ss.govern.server.config;
+
+import org.ss.govern.core.constants.NodeRole;
+import org.ss.govern.utils.StringUtils;
 
 import java.io.UnsupportedEncodingException;
 import java.math.BigInteger;
 import java.net.URLEncoder;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.util.regex.Pattern;
 
 /**
  * 配置合法性校验
@@ -14,25 +18,31 @@ import java.security.NoSuchAlgorithmException;
  **/
 public class ConfigValidates {
 
-    private static String NODE_TYPE_MASTER = "master";
-    private static String NODE_TYPE_SLAVE = "slave";
+    private static final String MASTER_IP_PORT_REGEX = "(\\d+\\.\\d+\\.\\d+\\.\\d+)\\:(\\d+)\\:(\\d+)";
 
     public static boolean checkNodeRole(String nodeRole) {
-        return NODE_TYPE_MASTER.equals(nodeRole) || NODE_TYPE_SLAVE.equals(nodeRole);
+        if (StringUtils.isNotEmpty(nodeRole)) {
+            if (!(NodeRole.MASTER.equals(nodeRole)
+                    || NodeRole.SLAVE.equals(nodeRole))) {
+                throw new IllegalArgumentException("config node.type must be master or slave");
+            }
+        } else {
+            throw new IllegalArgumentException("config node.role can not be null");
+        }
+        return true;
     }
 
-    public static void main(String[] args) throws Exception {
-        String answer = "不美不美";
-        String encode = URLEncoder.encode(answer, "utf-8");
-        String v = "91650103MA77TY8B85" + encode;
-        String v2 = "91650103MA77TY8B85%25E4%25B8%258D%25E7%25BE%258E";
-        v2 = encodeURIComponent(v);
-        System.out.println(stringToMD5(v2));
-
-        String v3 = "" + "" + "123456" + "123456" + URLEncoder.encode("我美不美", "utf-8") + URLEncoder.encode("美", "utf-8");
-        System.out.println(stringToMD5(encodeURIComponent(v3)));
-        String v4 = "123456" + "123456" + URLEncoder.encode("我美不美", "utf-8") + URLEncoder.encode("美", "utf-8");
-        System.out.println(stringToMD5(encodeURIComponent(v4)));
+    public static boolean checkMasterNodeServers(String masterNodeServers) {
+        if (StringUtils.isEmpty(masterNodeServers)) {
+            throw new IllegalArgumentException("config master.node.servers must be master or slave");
+        }
+        String[] masterNodeServersArray = masterNodeServers.split(";");
+        for (String masterNodeServer : masterNodeServersArray) {
+            if (!Pattern.matches(MASTER_IP_PORT_REGEX, masterNodeServer)) {
+                throw new IllegalArgumentException("config master.node.servers has a wrong pattern:" + masterNodeServer);
+            }
+        }
+        return true;
     }
 
     public static String stringToMD5(String plainText) {
