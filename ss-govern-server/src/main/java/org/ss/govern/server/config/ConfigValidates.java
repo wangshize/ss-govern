@@ -18,7 +18,8 @@ import java.util.regex.Pattern;
  **/
 public class ConfigValidates {
 
-    private static final String MASTER_IP_PORT_REGEX = "(\\d+\\.\\d+\\.\\d+\\.\\d+)\\:(\\d+)\\:(\\d+)";
+    private static final String MASTER_IP_PORT_REGEX = "(\\d+\\.\\d+\\.\\d+\\.\\d+)\\:(\\d+)\\:(\\d+)\\:(\\d+)";
+    private static final String NODE_ID_REGEX = "(\\d+)";
 
     public static boolean checkNodeRole(String nodeRole) {
         if (StringUtils.isNotEmpty(nodeRole)) {
@@ -34,50 +35,26 @@ public class ConfigValidates {
 
     public static boolean checkMasterNodeServers(String masterNodeServers) {
         if (StringUtils.isEmpty(masterNodeServers)) {
-            throw new IllegalArgumentException("config master.node.servers must be master or slave");
+            throw new IllegalArgumentException("config master.node.servers can not be empty");
         }
         String[] masterNodeServersArray = masterNodeServers.split(";");
         for (String masterNodeServer : masterNodeServersArray) {
-            if (!Pattern.matches(MASTER_IP_PORT_REGEX, masterNodeServer)) {
+            boolean isMatch = Pattern.matches(MASTER_IP_PORT_REGEX, masterNodeServer);
+            if (!isMatch) {
                 throw new IllegalArgumentException("config master.node.servers has a wrong pattern:" + masterNodeServer);
             }
         }
         return true;
     }
 
-    public static String stringToMD5(String plainText) {
-        byte[] secretBytes = null;
-        try {
-            secretBytes = MessageDigest.getInstance("md5").digest(
-                    plainText.getBytes());
-        } catch (NoSuchAlgorithmException e) {
-            throw new RuntimeException("没有这个md5算法！");
+    public static boolean checkNodeId(String nodeId) {
+        if(StringUtils.isEmpty(nodeId)) {
+            throw new IllegalArgumentException("config node.id can not be empty");
         }
-        String md5code = new BigInteger(1, secretBytes).toString(16);
-        for (int i = 0; i < 32 - md5code.length(); i++) {
-            md5code = "0" + md5code;
+        boolean isMatch = Pattern.matches(NODE_ID_REGEX, nodeId);
+        if(!isMatch) {
+            throw new IllegalArgumentException("node.id must be a number");
         }
-        return md5code;
-    }
-
-    public static String encodeURIComponent(String s) {
-        String result = null;
-
-        try {
-            result = URLEncoder.encode(s, "UTF-8")
-                    .replaceAll("\\+", "%20")
-                    .replaceAll("\\%21", "!")
-                    .replaceAll("\\%27", "'")
-                    .replaceAll("\\%28", "(")
-                    .replaceAll("\\%29", ")")
-                    .replaceAll("\\%7E", "~");
-        }
-
-        // This exception should never occur.
-        catch (UnsupportedEncodingException e) {
-            result = s;
-        }
-
-        return result;
+        return isMatch;
     }
 }

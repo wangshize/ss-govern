@@ -42,6 +42,11 @@ public class GovernServerConfig {
     private String masterNodeServers;
 
     /**
+     * 节点编号
+     */
+    private Integer nodeId;
+
+    /**
      * 解析配置文件
      *
      * @param configPath
@@ -64,6 +69,13 @@ public class GovernServerConfig {
                 this.masterNodeServers = masterNodeServers;
                 if(LOG.isDebugEnabled()) {
                     LOG.debug("debug parameter value : master.node.servers=" + masterNodeServers);
+                }
+            }
+            String nodeId = configProperties.getProperty("node.id");
+            if(ConfigValidates.checkNodeId(nodeId)) {
+                this.nodeId = Integer.valueOf(nodeId);
+                if(LOG.isDebugEnabled()) {
+                    LOG.debug("debug parameter value : node.id=" + nodeId);
                 }
             }
             LOG.info("successfully validation all configuration entries");
