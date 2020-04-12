@@ -38,6 +38,7 @@ public class GovernServer {
             nodeStatus.setStatus(NodeStatus.RUNNING);
             String nodeRole = config.getNodeRole();
             startNode(nodeRole);
+            LOG.info("start govern finish.....");
             waitForShutdown();
         } catch (ConfigurationException e) {
             LOG.error("Invalid config, exiting abnormally", e);
@@ -68,6 +69,7 @@ public class GovernServer {
         while (NodeStatus.RUNNING == NodeStatus.get()) {
             Thread.sleep(NodeStatus.SHUTDOWN_CHECK_INTERVAL);
         }
+        LOG.error("govern server is not running, it will exit at once.....");
     }
 
 }

@@ -24,7 +24,6 @@ public class NodeStatus {
         return NodeStatus.RUNNING == NodeStatus.get();
     }
 
-
     /**
      * 节点状态
      */
