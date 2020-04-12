@@ -1,5 +1,6 @@
 package org.ss.govern.server;
 
+import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.ss.govern.core.constants.NodeRole;
@@ -7,7 +8,6 @@ import org.ss.govern.server.config.GovernServerConfig;
 import org.ss.govern.server.node.NodeStatus;
 import org.ss.govern.server.node.master.MasterNode;
 import org.ss.govern.server.node.slave.SlaveNode;
-import org.ss.govern.utils.StringUtils;
 
 /**
  * 服务治理平台server
@@ -25,6 +25,7 @@ public class GovernServer {
      * @param args
      */
     public static void main(String[] args) {
+        NodeStatus nodeStatus = NodeStatus.getInstance();
         try {
             LOG.info("starting govern server......");
             String configPath = args[0];
@@ -32,12 +33,11 @@ public class GovernServer {
             if (StringUtils.isEmpty(configPath)) {
                 throw new ConfigurationException("configuration file cannot be empty");
             }
-            NodeStatus nodeStatus = NodeStatus.getInstance();
             nodeStatus.setStatus(NodeStatus.INITIALIZING);
             config.parse(configPath);
+            nodeStatus.setStatus(NodeStatus.RUNNING);
             String nodeRole = config.getNodeRole();
             startNode(nodeRole);
-            nodeStatus.setStatus(NodeStatus.RUNNING);
             waitForShutdown();
         } catch (ConfigurationException e) {
             LOG.error("Invalid config, exiting abnormally", e);
@@ -45,6 +45,12 @@ public class GovernServer {
         } catch (InterruptedException e) {
             LOG.error("encounter thread interrupt error", e);
             System.exit(1);
+        }
+
+        if(NodeStatus.SHUTDOWN == nodeStatus.getStatus()) {
+            LOG.info("system is going to shutdown normally");
+        } else if(NodeStatus.FATAL == nodeStatus.getStatus()) {
+            LOG.info("system is going to shutdown unNormally");
         }
     }
 

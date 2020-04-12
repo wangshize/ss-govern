@@ -1,13 +1,8 @@
 package org.ss.govern.server.config;
 
+import org.apache.commons.lang3.StringUtils;
 import org.ss.govern.core.constants.NodeRole;
-import org.ss.govern.utils.StringUtils;
 
-import java.io.UnsupportedEncodingException;
-import java.math.BigInteger;
-import java.net.URLEncoder;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.util.regex.Pattern;
 
 /**
@@ -18,7 +13,7 @@ import java.util.regex.Pattern;
  **/
 public class ConfigValidates {
 
-    private static final String MASTER_IP_PORT_REGEX = "(\\d+\\.\\d+\\.\\d+\\.\\d+)\\:(\\d+)\\:(\\d+)\\:(\\d+)";
+    private static final String MASTER_IP_PORT_REGEX = "(\\d+)\\:(\\d+\\.\\d+\\.\\d+\\.\\d+)\\:(\\d+)\\:(\\d+)\\:(\\d+)";
     private static final String NODE_ID_REGEX = "(\\d+)";
 
     public static boolean checkNodeRole(String nodeRole) {

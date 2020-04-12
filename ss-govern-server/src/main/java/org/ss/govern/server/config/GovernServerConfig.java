@@ -3,11 +3,13 @@ package org.ss.govern.server.config;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.ss.govern.server.ConfigurationException;
+import org.ss.govern.server.node.NodeInfo;
 
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.IOException;
+import java.util.List;
 import java.util.Properties;
 
 /**
@@ -55,7 +57,7 @@ public class GovernServerConfig {
         try {
             LOG.info("going to parse configuration file: " + configPath);
             Properties configProperties;
-            configProperties = loadConfigurationFIle(configPath);
+            configProperties = loadConfigurationFile(configPath);
             LOG.info("successfully loading configuration from file " + configPath);
             String nodeRole = configProperties.getProperty("node.role");
             if (ConfigValidates.checkNodeRole(nodeRole)) {
@@ -88,7 +90,7 @@ public class GovernServerConfig {
         }
     }
 
-    private Properties loadConfigurationFIle(String configPath) throws IOException {
+    private Properties loadConfigurationFile(String configPath) throws IOException {
         Properties configProperties;
         File configFile = new File(configPath);
         if (!configFile.exists()) {
@@ -104,5 +106,13 @@ public class GovernServerConfig {
 
     public String getNodeRole() {
         return this.nodeRole;
+    }
+
+    public Integer getNodeId() {
+        return this.nodeId;
+    }
+
+    public String getMasterNodeServers() {
+        return this.masterNodeServers;
     }
 }

@@ -9,6 +9,7 @@ public class NodeStatus {
     public static final int INITIALIZING = 0;
     public static final int RUNNING = 1;
     public static final int SHUTDOWN = 2;
+    public static final int FATAL = 3;
 
     public static final int SHUTDOWN_CHECK_INTERVAL = 300;
 
@@ -18,6 +19,11 @@ public class NodeStatus {
     public static NodeStatus getInstance() {
         return Singleton.instance;
     }
+
+    public static boolean isRunning() {
+        return NodeStatus.RUNNING == NodeStatus.get();
+    }
+
 
     /**
      * 节点状态
