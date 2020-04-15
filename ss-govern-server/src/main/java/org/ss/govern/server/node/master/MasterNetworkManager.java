@@ -15,10 +15,12 @@ import java.net.InetSocketAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.net.SocketException;
-import java.util.ArrayList;
-import java.util.List;
+import java.nio.ByteBuffer;
+import java.util.*;
+import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.LinkedBlockingQueue;
 
 /**
  * 集群节点间的通信管理组件
@@ -36,7 +38,6 @@ public class MasterNetworkManager {
 
     private final int DEFAULT_RETRIES = 3;
     private final int CONNECT_TIMEOUT = 5000;
-    private final int WAIT_ALLNODES_CONNECT_TIMEOUT = 5000;
 
     public static final long PROTOCOL_VERSION = -65536L;
 
@@ -51,6 +52,9 @@ public class MasterNetworkManager {
      * value socket
      */
     private ConcurrentHashMap<Integer, Socket> remoteNodeSockets = new ConcurrentHashMap<>();
+
+    private Map<Integer, LinkedBlockingQueue<ByteBuffer>> queueSendMap = new ConcurrentHashMap<>();
+    private LinkedBlockingQueue<ByteBuffer> queueRecv = new LinkedBlockingQueue<>();
 
     List<NodeInfo> nodeInfoList;
 
@@ -67,23 +71,23 @@ public class MasterNetworkManager {
         new MasterConnectionListener().start();
     }
 
-    public Boolean connectOtherMasterNodes() {
+    public void connectOtherMasterNodes() {
         List<NodeInfo> beforeMasterNodes = getBeforeMasterNodes();
         if (CollectionUtils.isEmpty(beforeMasterNodes)) {
-            return true;
+            return;
         }
         for (NodeInfo beforeMasterNode : beforeMasterNodes) {
             connectBeforeMasterNode(beforeMasterNode);
         }
-        return false;
     }
 
     public void waitAllNodesConnected() {
         int allOtherNodeNum = nodeInfoList.size() - 1;
-        while (remoteNodeSockets.size() < allOtherNodeNum) {
+        while (NodeStatus.isRunning() && remoteNodeSockets.size() < allOtherNodeNum) {
             LOG.info("wait for other node connect....");
             ThreadUtils.sleep(2000);
         }
+        LOG.info("all node connect successful.....`");
     }
 
     private boolean connectBeforeMasterNode(NodeInfo nodeInfo) {
@@ -99,11 +103,10 @@ public class MasterNetworkManager {
                 socket.setTcpNoDelay(true);
                 socket.setSoTimeout(0);
                 socket.connect(endpoint, CONNECT_TIMEOUT);
-                //连接建立成功，启动读写io线程
-                addSocket(nodeId, socket);
-                startIOThread(socket);
                 LOG.info("successfully connected master node :" + ip + ":" + port);
                 initiateConnection(socket, self.getNodeId());
+                addSocket(nodeId, socket);
+                startIOThreads(nodeId, socket);
                 return true;
             } catch (IOException e) {
                 LOG.error("connect with " + nodeInfo.getIp() + " fail");
@@ -145,26 +148,24 @@ public class MasterNetworkManager {
 
     /**
      * @param sock
+     * @return remoteNodeId
      */
-    public void receiveConnection(final Socket sock) {
+    public Integer receiveConnection(final Socket sock) {
         DataInputStream din = null;
+        Integer sid = null;
         try {
             din = new DataInputStream(
                     new BufferedInputStream(sock.getInputStream()));
             //预留
             Long protocolVersion = din.readLong();
-            Integer sid = din.readInt();
+            sid = din.readInt();
             addSocket(sid, sock);
         } catch (IOException e) {
             LOG.error("Exception handling connection, addr: {}, closing server connection",
                     sock.getRemoteSocketAddress());
             closeSocket(sock);
         }
-    }
-
-    private void startIOThread(Socket socket) {
-        new MasterNetworkReadThread(socket).start();
-        new MasterNetworkWriteThread(socket).start();
+        return sid;
     }
 
     /**
@@ -202,16 +203,15 @@ public class MasterNetworkManager {
                 LOG.error("close connection in unknown remote address failed", e);
             }
         } else {
-            LOG.info("receive node id is " + nodeId + ",and put it in cache");
+            LOG.info("receive client's node id is " + nodeId + ",and put it in cache");
             remoteNodeSockets.put(nodeId, client);
         }
     }
 
-    private void closeSocket(Socket sock) {
+    public void closeSocket(Socket sock) {
         if (sock == null) {
             return;
         }
-
         try {
             sock.close();
         } catch (IOException ie) {
@@ -232,9 +232,51 @@ public class MasterNetworkManager {
         return null;
     }
 
-    private void startIOThreads(Socket socket) {
-        new MasterNetworkWriteThread(socket).start();
-        new MasterNetworkReadThread(socket).start();
+    private void startIOThreads(Integer remoteNodeId, Socket socket) {
+        LinkedBlockingQueue<ByteBuffer> sendQueue = new LinkedBlockingQueue<>();
+        queueSendMap.put(remoteNodeId, sendQueue);
+        new MasterNetworkWriteThread(remoteNodeId, socket, this).start();
+        new MasterNetworkReadThread(remoteNodeId, socket, this).start();
+    }
+
+    public Boolean sendMessage(Integer remoteNodeId, ByteBuffer request) {
+        try {
+            LinkedBlockingQueue<ByteBuffer> sendQueue = queueSendMap.get(remoteNodeId);
+            sendQueue.put(request);
+        } catch (InterruptedException e) {
+            LOG.error("put request into sendQueue error, remoteNodeId = " + remoteNodeId, e);
+            return false;
+        }
+        return true;
+    }
+
+    public void removeSendQueue(Integer nodeId) {
+        this.queueSendMap.remove(nodeId);
+    }
+
+    public ByteBuffer takeSendQueue(Integer nodeId) throws InterruptedException {
+        LinkedBlockingQueue<ByteBuffer> queue = queueSendMap.get(nodeId);
+        if(queue == null) {
+            throw new IllegalArgumentException("error nodeId, can not find sendQueue by this nodeId:" + nodeId);
+        }
+        return queue.take();
+    }
+
+    /**
+     * 阻塞式获取消息
+     * @return
+     */
+    public ByteBuffer takeRecvMessage() {
+        try {
+            return queueRecv.take();
+        } catch (InterruptedException e) {
+            LOG.error("take message from queueRecv error", e);
+            return null;
+        }
+    }
+
+    public void addToRecvQueue(ByteBuffer message) throws InterruptedException {
+        queueRecv.put(message);
     }
 
     /**
@@ -251,8 +293,6 @@ public class MasterNetworkManager {
 
         private ServerSocket serverSocket;
 
-        private Integer nodeId;
-
         /**
          * 已重试次数
          */
@@ -264,7 +304,6 @@ public class MasterNetworkManager {
 
         private void init() {
             GovernServerConfig config = GovernServerConfig.getInstance();
-            this.nodeId = config.getNodeId();
         }
 
 
@@ -278,6 +317,7 @@ public class MasterNetworkManager {
                     serverSocket = new ServerSocket();
                     //与其他节点意外断开连接后，此时连接处于timeout状态，无法重新绑定端口号
                     //设置为true后，允许重新对端口号进行绑定连接
+                    //也就说服务端此时还没有真正关闭这个端口
                     serverSocket.setReuseAddress(true);
                     serverSocket.bind(endpoint);
                     LOG.info("binding port " + port + " success");
@@ -286,8 +326,10 @@ public class MasterNetworkManager {
                         setSockOpts(client);
                         LOG.info("Received connection request "
                                 + NetUtils.formatInetAddr((InetSocketAddress) client.getRemoteSocketAddress()));
-                        receiveConnection(client);
-                        startIOThreads(client);
+                        Integer remoteNodeId = receiveConnection(client);
+                        if(remoteNodeId == null) {
+                            startIOThreads(remoteNodeId, client);
+                        }
                         retyies = 0;
                     }
                 } catch (IOException e) {

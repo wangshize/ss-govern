@@ -24,6 +24,14 @@ public class NodeStatus {
         return NodeStatus.RUNNING == NodeStatus.get();
     }
 
+    public static boolean isFatal() {
+        return NodeStatus.FATAL == NodeStatus.get();
+    }
+
+    public static void fatal() {
+        getInstance().setStatus(FATAL);
+    }
+
     /**
      * 节点状态
      */

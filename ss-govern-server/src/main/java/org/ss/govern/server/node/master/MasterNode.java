@@ -2,7 +2,6 @@ package org.ss.govern.server.node.master;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.ss.govern.server.node.NodeStatus;
 
 /**
  * @author wangsz
@@ -31,5 +30,7 @@ public class MasterNode {
         masterNetworkManager.connectOtherMasterNodes();
 
         masterNetworkManager.waitAllNodesConnected();
+
+        controllerCandidate.voteForControllerElection();
     }
 }

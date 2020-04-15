@@ -12,4 +12,13 @@ public class ControllerCandidate {
     public ControllerCandidate(MasterNetworkManager masterNetworkManager) {
         this.masterNetworkManager = masterNetworkManager;
     }
+
+    /**
+     * 投票选举controller
+     * @return
+     */
+    public int voteForControllerElection() {
+
+        return 0;
+    }
 }
