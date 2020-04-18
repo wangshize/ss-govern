@@ -327,7 +327,7 @@ public class MasterNetworkManager {
                         LOG.info("Received connection request "
                                 + NetUtils.formatInetAddr((InetSocketAddress) client.getRemoteSocketAddress()));
                         Integer remoteNodeId = receiveConnection(client);
-                        if(remoteNodeId == null) {
+                        if(remoteNodeId != null) {
                             startIOThreads(remoteNodeId, client);
                         }
                         retyies = 0;
