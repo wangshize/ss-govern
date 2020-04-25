@@ -1,5 +1,6 @@
 package org.ss.govern.server.config;
 
+import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.ss.govern.server.ConfigurationException;
@@ -49,6 +50,11 @@ public class GovernServerConfig {
     private Integer nodeId;
 
     /**
+     * 是否为controller候选节点
+     * */
+    private Boolean isControllerCandidate;
+
+    /**
      * 解析配置文件
      *
      * @param configPath
@@ -78,6 +84,17 @@ public class GovernServerConfig {
                 this.nodeId = Integer.valueOf(nodeId);
                 if(LOG.isDebugEnabled()) {
                     LOG.debug("debug parameter value : node.id=" + nodeId);
+                }
+            }
+            String isControllerCandidate = configProperties.getProperty("is.controller.candidate");
+            if(ConfigValidates.checkIsControllerCandidate(isControllerCandidate)) {
+                if(StringUtils.isEmpty(isControllerCandidate)) {
+                    this.isControllerCandidate = Boolean.TRUE;
+                } else {
+                    this.isControllerCandidate = Boolean.valueOf(isControllerCandidate);
+                    if(LOG.isDebugEnabled()) {
+                        LOG.debug("debug parameter value : is.controller.candidate=" + isControllerCandidate);
+                    }
                 }
             }
             LOG.info("successfully validation all configuration entries");
@@ -114,5 +131,9 @@ public class GovernServerConfig {
 
     public String getMasterNodeServers() {
         return this.masterNodeServers;
+    }
+
+    public Boolean getIsControllerCandidate() {
+        return isControllerCandidate;
     }
 }

@@ -11,6 +11,7 @@ import java.util.concurrent.LinkedBlockingQueue;
 
 /**
  * master节点间网络连接写线程
+ * 每两个节点之间启动一个写线程
  * @author wangsz
  * @create 2020-04-11
  **/

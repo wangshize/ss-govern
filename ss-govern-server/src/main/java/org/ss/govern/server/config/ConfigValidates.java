@@ -52,4 +52,15 @@ public class ConfigValidates {
         }
         return isMatch;
     }
+
+    public static boolean checkIsControllerCandidate(String isControllerCandidate) {
+        if(StringUtils.isEmpty(isControllerCandidate)) {
+            return true;
+        }
+        if(isControllerCandidate.equals(Boolean.TRUE.toString()) ||
+            isControllerCandidate.equals(Boolean.FALSE.toString())) {
+            return true;
+        }
+        throw new IllegalArgumentException("is.controller.candidate must be true or false");
+    }
 }

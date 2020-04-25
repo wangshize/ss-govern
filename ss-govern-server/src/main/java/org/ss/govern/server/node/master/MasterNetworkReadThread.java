@@ -11,6 +11,7 @@ import java.nio.ByteBuffer;
 
 /**
  * master节点间网络连接读线程
+ * 每两个节点之间启动一个读线程
  * @author wangsz
  * @create 2020-04-11
  **/

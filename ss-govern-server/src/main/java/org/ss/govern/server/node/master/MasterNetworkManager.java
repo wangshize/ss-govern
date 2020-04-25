@@ -7,6 +7,7 @@ import org.ss.govern.server.config.ConfigurationParser;
 import org.ss.govern.server.config.GovernServerConfig;
 import org.ss.govern.server.node.NodeInfo;
 import org.ss.govern.server.node.NodeStatus;
+import org.ss.govern.server.node.RemoteNodeManager;
 import org.ss.govern.utils.NetUtils;
 import org.ss.govern.utils.ThreadUtils;
 
@@ -41,6 +42,10 @@ public class MasterNetworkManager {
 
     public static final long PROTOCOL_VERSION = -65536L;
 
+    private RemoteNodeManager remoteNodeManager;
+
+    private Map<Integer, NodeInfo> remoteNodes;
+
     /**
      * 等待重试发起连接的master列表
      */
@@ -56,13 +61,11 @@ public class MasterNetworkManager {
     private Map<Integer, LinkedBlockingQueue<ByteBuffer>> queueSendMap = new ConcurrentHashMap<>();
     private LinkedBlockingQueue<ByteBuffer> queueRecv = new LinkedBlockingQueue<>();
 
-    List<NodeInfo> nodeInfoList;
-
     private NodeInfo self;
 
-    public MasterNetworkManager() {
-        ConfigurationParser configurationParser = ConfigurationParser.getInstance();
-        this.nodeInfoList = configurationParser.parseMasterNodeServers();
+    public MasterNetworkManager(RemoteNodeManager remoteNodeManager) {
+        this.remoteNodeManager = remoteNodeManager;
+        this.remoteNodes = remoteNodeManager.getRemoteMasterNodes();
         this.self = getSelf();
         new RetryConnectMasterNodeThread().start();
     }
@@ -82,7 +85,7 @@ public class MasterNetworkManager {
     }
 
     public void waitAllNodesConnected() {
-        int allOtherNodeNum = nodeInfoList.size() - 1;
+        int allOtherNodeNum = remoteNodes.size() - 1;
         while (NodeStatus.isRunning() && remoteNodeSockets.size() < allOtherNodeNum) {
             LOG.info("wait for other node connect....");
             ThreadUtils.sleep(2000);
@@ -126,20 +129,18 @@ public class MasterNetworkManager {
     }
 
     public void initiateConnection(final Socket sock, final Integer sid) {
-        DataOutputStream dout = null;
-        DataInputStream din = null;
+        DataOutputStream dout;
         try {
             BufferedOutputStream buf = new BufferedOutputStream(sock.getOutputStream());
             dout = new DataOutputStream(buf);
 
             // Sending id and challenge
             // represents protocol version (in other words - message type)
+            GovernServerConfig serverConfig = GovernServerConfig.getInstance();
             dout.writeLong(PROTOCOL_VERSION);
             dout.writeInt(sid);
+            dout.writeInt(serverConfig.getIsControllerCandidate() ? 1: 0);
             dout.flush();
-
-            din = new DataInputStream(
-                    new BufferedInputStream(sock.getInputStream()));
         } catch (IOException e) {
             LOG.warn("Ignoring exception reading or writing challenge: ", e);
             closeSocket(sock);
@@ -152,20 +153,25 @@ public class MasterNetworkManager {
      */
     public Integer receiveConnection(final Socket sock) {
         DataInputStream din = null;
-        Integer sid = null;
+        Integer remoteNodeId = null;
         try {
             din = new DataInputStream(
                     new BufferedInputStream(sock.getInputStream()));
             //预留
             Long protocolVersion = din.readLong();
-            sid = din.readInt();
-            addSocket(sid, sock);
+            remoteNodeId = din.readInt();
+            boolean isControllerCandidate = din.readInt() == 1 ? true : false;
+            remoteNodeManager.updateNodeIsControllerCandidate(remoteNodeId, isControllerCandidate);
+            addSocket(remoteNodeId, sock);
+            GovernServerConfig serverConfig = GovernServerConfig.getInstance();
+            Integer sid = serverConfig.getNodeId();
+            initiateConnection(sock, sid);
         } catch (IOException e) {
             LOG.error("Exception handling connection, addr: {}, closing server connection",
                     sock.getRemoteSocketAddress());
             closeSocket(sock);
         }
-        return sid;
+        return remoteNodeId;
     }
 
     /**
@@ -174,11 +180,9 @@ public class MasterNetworkManager {
      * @return
      */
     private List<NodeInfo> getBeforeMasterNodes() {
-        ConfigurationParser parser = ConfigurationParser.getInstance();
-        nodeInfoList = parser.parseMasterNodeServers();
         Integer nodeId = GovernServerConfig.getInstance().getNodeId();
         List<NodeInfo> beforeMasterNode = new ArrayList<>();
-        for (NodeInfo nodeInfo : nodeInfoList) {
+        for (NodeInfo nodeInfo : remoteNodes.values()) {
             if (nodeInfo.getNodeId() < nodeId) {
                 beforeMasterNode.add(nodeInfo);
             }
@@ -203,7 +207,7 @@ public class MasterNetworkManager {
                 LOG.error("close connection in unknown remote address failed", e);
             }
         } else {
-            LOG.info("receive client's node id is " + nodeId + ",and put it in cache");
+            LOG.info("receive client's node id is " + nodeId + ",and put it in cache[" + remoteNodeSockets.keys() + "]");
             remoteNodeSockets.put(nodeId, client);
         }
     }
@@ -221,10 +225,9 @@ public class MasterNetworkManager {
 
     private NodeInfo getSelf() {
         Integer nodeId = GovernServerConfig.getInstance().getNodeId();
-        for (NodeInfo nodeInfo : nodeInfoList) {
-            if (nodeInfo.getNodeId().equals(nodeId)) {
-                return nodeInfo;
-            }
+        NodeInfo self = remoteNodes.get(nodeId);
+        if(self != null) {
+            return self;
         }
         LOG.error(String.format("nodeId = %s addr config can not find", nodeId));
         NodeStatus nodeStatus = NodeStatus.getInstance();
