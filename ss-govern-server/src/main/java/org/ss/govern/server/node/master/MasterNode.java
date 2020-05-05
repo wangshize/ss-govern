@@ -28,8 +28,8 @@ public class MasterNode {
 
         //连接id小于自己的master节点
         masterNetworkManager.connectOtherMasterNodes();
-        //等待所有节点间连接完毕
-        masterNetworkManager.waitAllNodesConnected();
+        //等待大多数节点启动
+        masterNetworkManager.waitMostNodesConnected();
         //选举controller
         controllerCandidate.voteForControllerElection();
     }

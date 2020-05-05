@@ -81,9 +81,13 @@ public class MasterNetworkManager {
         }
     }
 
-    public void waitAllNodesConnected() {
+    /**
+     * 等待大多数节点启动
+     */
+    public void waitMostNodesConnected() {
         int allOtherNodeNum = nodeInfoList.size() - 1;
-        while (NodeStatus.isRunning() && remoteNodeSockets.size() < allOtherNodeNum) {
+        int mostNodeNum = allOtherNodeNum / 2 + 1;
+        while (NodeStatus.isRunning() && remoteNodeSockets.size() < mostNodeNum) {
             LOG.info("wait for other node connect....");
             ThreadUtils.sleep(2000);
         }
@@ -204,7 +208,7 @@ public class MasterNetworkManager {
             }
         } else {
             LOG.info("receive client's node id is " + nodeId + ",and put it in cache");
-            remoteNodeSockets.put(nodeId, client);
+            remoteNodeSockets.putIfAbsent(nodeId, client);
         }
     }
 
