@@ -12,6 +12,11 @@ public class NodeInfo {
     private Integer nodeId;
 
     /**
+     * 是否参与controller选举
+     */
+    private Boolean isControllerCandidate;
+
+    /**
      * 节点ip
      */
     private String ip;
@@ -46,6 +51,14 @@ public class NodeInfo {
 
     public String getIp() {
         return ip;
+    }
+
+    public Boolean getControllerCandidate() {
+        return isControllerCandidate;
+    }
+
+    public void setControllerCandidate(Boolean controllerCandidate) {
+        isControllerCandidate = controllerCandidate;
     }
 
     public Integer getMasterConnectPort() {

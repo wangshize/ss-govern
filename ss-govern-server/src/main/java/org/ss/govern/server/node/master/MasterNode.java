@@ -2,6 +2,9 @@ package org.ss.govern.server.node.master;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.ss.govern.core.constants.MasterNodeRole;
+import org.ss.govern.server.config.GovernServerConfig;
+import org.ss.govern.server.node.RemoteNodeManager;
 
 /**
  * @author wangsz
@@ -16,9 +19,15 @@ public class MasterNode {
 
     private MasterNetworkManager masterNetworkManager;
 
+    private RemoteNodeManager remoteNodeManager;
+
+    private GovernServerConfig serverConfig;
+
     public MasterNode() {
-        this.masterNetworkManager = new MasterNetworkManager();
-        this.controllerCandidate = new ControllerCandidate(masterNetworkManager);
+        this.remoteNodeManager = new RemoteNodeManager();
+        this.masterNetworkManager = new MasterNetworkManager(remoteNodeManager);
+        this.controllerCandidate = new ControllerCandidate(masterNetworkManager, remoteNodeManager);
+        this.serverConfig = GovernServerConfig.getInstance();
     }
 
     public void start() {
@@ -31,6 +40,9 @@ public class MasterNode {
         //等待大多数节点启动
         masterNetworkManager.waitMostNodesConnected();
         //选举controller
-        controllerCandidate.voteForControllerElection();
+        Boolean isControllerCandidate = serverConfig.getIsControllerCandidate();
+        if(isControllerCandidate) {
+            Integer role = controllerCandidate.voteForControllerElection();
+        }
     }
 }

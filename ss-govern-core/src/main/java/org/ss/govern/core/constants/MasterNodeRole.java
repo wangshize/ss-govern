@@ -4,14 +4,14 @@ package org.ss.govern.core.constants;
  * @author wangsz
  * @create 2020-04-08
  **/
-public enum  MasterNodeRole {
+public class  MasterNodeRole {
 
    /**
     * controller
     */
-   CONTROLLER,
+   public static final int CONTROLLER = 1;
    /**
     * controller候选人
     */
-   CANDIDATE;
+   public static final int CANDIDATE = 2;
 }
