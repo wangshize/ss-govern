@@ -3,7 +3,6 @@ package org.ss.govern.server.node.master;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.ss.govern.core.constants.MasterNodeRole;
-import org.ss.govern.server.config.ConfigurationParser;
 import org.ss.govern.server.config.GovernServerConfig;
 import org.ss.govern.server.node.NodeInfo;
 import org.ss.govern.server.node.NodeStatus;
@@ -24,7 +23,7 @@ public class ControllerCandidate {
 
     private static final Logger LOG = LoggerFactory.getLogger(ControllerCandidate.class);
 
-    private MasterNetworkManager masterNetworkManager;
+    private NetworkManager masterNetworkManager;
 
     private RemoteNodeManager remoteNodeManager;
 
@@ -36,7 +35,7 @@ public class ControllerCandidate {
 
     private Integer selfId;
 
-    public ControllerCandidate(MasterNetworkManager masterNetworkManager,
+    public ControllerCandidate(NetworkManager masterNetworkManager,
                                RemoteNodeManager remoteNodeManager) {
         this.masterNetworkManager = masterNetworkManager;
         this.remoteNodeManager = remoteNodeManager;
@@ -48,7 +47,7 @@ public class ControllerCandidate {
      * 投票选举controller
      * @return
      */
-    public Integer voteForControllerElection() {
+    public Integer voteForControllerElection() throws InterruptedException {
         this.currentVote = new Vote(selfId, selfId, voteRound);
         HashMap<Integer, Vote> recvSet = new HashMap<>();
         recvSet.put(selfId, currentVote);
@@ -64,7 +63,7 @@ public class ControllerCandidate {
         return controllerId.equals(selfId) ? MasterNodeRole.CONTROLLER : MasterNodeRole.CANDIDATE;
     }
 
-    private Integer startNextRoundVote(List<NodeInfo> otherControllerCandidates, HashMap<Integer, Vote> recvSet) {
+    private Integer startNextRoundVote(List<NodeInfo> otherControllerCandidates, HashMap<Integer, Vote> recvSet) throws InterruptedException {
         int candidateCount = (1 + otherControllerCandidates.size());
         int quorum = candidateCount / 2 + 1;
         Vote vote = this.currentVote;
@@ -76,7 +75,7 @@ public class ControllerCandidate {
             masterNetworkManager.sendMessage(remoteNodeId, vote.toRequestByteBuffer());
         }
         while (NodeStatus.isRunning()) {
-            ByteBuffer recvMsg = masterNetworkManager.takeRecvMessage();
+            ByteBuffer recvMsg = masterNetworkManager.takeMasterRecvMessage();
             Vote recvVote = new Vote(recvMsg);
             if(recvVote.getVoterId() == null) {
                 continue;

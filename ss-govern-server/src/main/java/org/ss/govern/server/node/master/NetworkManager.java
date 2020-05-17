@@ -3,22 +3,17 @@ package org.ss.govern.server.node.master;
 import org.apache.commons.collections.CollectionUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.ss.govern.server.config.ConfigurationParser;
 import org.ss.govern.server.config.GovernServerConfig;
 import org.ss.govern.server.node.NodeInfo;
 import org.ss.govern.server.node.NodeStatus;
 import org.ss.govern.server.node.RemoteNodeManager;
-import org.ss.govern.utils.NetUtils;
 import org.ss.govern.utils.ThreadUtils;
 
 import java.io.*;
 import java.net.InetSocketAddress;
-import java.net.ServerSocket;
 import java.net.Socket;
-import java.net.SocketException;
 import java.nio.ByteBuffer;
 import java.util.*;
-import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.LinkedBlockingQueue;
@@ -33,9 +28,9 @@ import java.util.concurrent.LinkedBlockingQueue;
  * @author wangsz
  * @create 2020-04-09
  **/
-public class MasterNetworkManager {
+public class NetworkManager {
 
-    private static final Logger LOG = LoggerFactory.getLogger(MasterNetworkManager.class);
+    private static final Logger LOG = LoggerFactory.getLogger(NetworkManager.class);
 
     private final int DEFAULT_RETRIES = 3;
     private final int CONNECT_TIMEOUT = 5000;
@@ -59,11 +54,14 @@ public class MasterNetworkManager {
     private ConcurrentHashMap<Integer, Socket> remoteNodeSockets = new ConcurrentHashMap<>();
 
     private Map<Integer, LinkedBlockingQueue<ByteBuffer>> queueSendMap = new ConcurrentHashMap<>();
-    private LinkedBlockingQueue<ByteBuffer> queueRecv = new LinkedBlockingQueue<>();
+
+    private LinkedBlockingQueue<ByteBuffer> masterQueueRecv = new LinkedBlockingQueue<>();
+
+    private LinkedBlockingQueue<ByteBuffer> slaveQueueRecv = new LinkedBlockingQueue<>();
 
     private NodeInfo self;
 
-    public MasterNetworkManager(RemoteNodeManager remoteNodeManager) {
+    public NetworkManager(RemoteNodeManager remoteNodeManager) {
         this.remoteNodeManager = remoteNodeManager;
         this.remoteNodes = remoteNodeManager.getRemoteMasterNodes();
         this.self = getSelf();
@@ -71,7 +69,11 @@ public class MasterNetworkManager {
     }
 
     public void waitOtherMasterNodesConnect() {
-        new MasterConnectionListener().start();
+        new MasterConnectionListener(this).start();
+    }
+
+    public void waitSlaveNodeConnect() {
+        new SlaveConnectionListener(this).start();
     }
 
     public void connectOtherMasterNodes() {
@@ -88,8 +90,9 @@ public class MasterNetworkManager {
      * 等待大多数节点启动
      */
     public void waitMostNodesConnected() {
-        int allOtherNodeNum = remoteNodes.size() - 1;
-        while (NodeStatus.isRunning() && remoteNodeSockets.size() < allOtherNodeNum) {
+        //无需等待所有节点连接，只需要超过一半的节点建立成功即可开始选举
+        int mostNodeNum = remoteNodes.size() + 1;
+        while (NodeStatus.isRunning() && remoteNodeSockets.size() < mostNodeNum) {
             LOG.info("wait for other node connect....");
             ThreadUtils.sleep(2000);
         }
@@ -112,7 +115,7 @@ public class MasterNetworkManager {
                 LOG.info("successfully connected master node :" + ip + ":" + port);
                 initiateConnection(socket, self.getNodeId());
                 addSocket(nodeId, socket);
-                startIOThreads(nodeId, socket);
+                startMasterSocketIOThreads(nodeId, socket);
                 return true;
             } catch (IOException e) {
                 LOG.error("connect with " + nodeInfo.getIp() + " fail");
@@ -142,12 +145,29 @@ public class MasterNetworkManager {
             GovernServerConfig serverConfig = GovernServerConfig.getInstance();
             dout.writeLong(PROTOCOL_VERSION);
             dout.writeInt(sid);
-            dout.writeInt(serverConfig.getIsControllerCandidate() ? 1: 0);
+            dout.writeInt(serverConfig.getIsControllerCandidate() ? 1 : 0);
             dout.flush();
         } catch (IOException e) {
             LOG.warn("Ignoring exception reading or writing challenge: ", e);
             closeSocket(sock);
         }
+    }
+
+    public Integer readNodeId(Socket sock) {
+        DataInputStream din = null;
+        Integer remoteNodeId = null;
+        try {
+            din = new DataInputStream(
+                    new BufferedInputStream(sock.getInputStream()));
+            //预留
+            Long protocolVersion = din.readLong();
+            remoteNodeId = din.readInt();
+        } catch (IOException e) {
+            LOG.error("Exception handling connection, addr: {}, closing server connection",
+                    sock.getRemoteSocketAddress());
+            closeSocket(sock);
+        }
+        return remoteNodeId;
     }
 
     /**
@@ -229,7 +249,7 @@ public class MasterNetworkManager {
     private NodeInfo getSelf() {
         Integer nodeId = GovernServerConfig.getInstance().getNodeId();
         NodeInfo self = remoteNodes.get(nodeId);
-        if(self != null) {
+        if (self != null) {
             return self;
         }
         LOG.error(String.format("nodeId = %s addr config can not find", nodeId));
@@ -238,13 +258,27 @@ public class MasterNetworkManager {
         return null;
     }
 
-    private void startIOThreads(Integer remoteNodeId, Socket socket) {
-        LinkedBlockingQueue<ByteBuffer> sendQueue = new LinkedBlockingQueue<>();
-        queueSendMap.put(remoteNodeId, sendQueue);
-        new MasterNetworkWriteThread(remoteNodeId, socket, this).start();
-        new MasterNetworkReadThread(remoteNodeId, socket, this).start();
+    public void startMasterSocketIOThreads(Integer remoteNodeId, Socket socket) {
+        LinkedBlockingQueue<ByteBuffer> masterQueueSend = new LinkedBlockingQueue<>();
+        if(queueSendMap.putIfAbsent(remoteNodeId, masterQueueSend) != null) {
+            throw new IllegalArgumentException("nodeId : " + remoteNodeId + " is already exist");
+        }
+        new MasterNetworkWriteThread(remoteNodeId, socket, masterQueueSend,this).start();
+        new MasterNetworkReadThread(remoteNodeId, socket, masterQueueRecv,this).start();
     }
 
+    public void startSlvaeSocketIOThreads(Integer remoteNodeId, Socket socket) {
+        LinkedBlockingQueue<ByteBuffer> slaveQueueSend = new LinkedBlockingQueue<>();
+        if(queueSendMap.putIfAbsent(remoteNodeId, slaveQueueSend) != null) {
+            throw new IllegalArgumentException("nodeId : " + remoteNodeId + " is already exist");
+        }
+        new MasterNetworkWriteThread(remoteNodeId, socket, slaveQueueSend,this).start();
+        new MasterNetworkReadThread(remoteNodeId, socket, slaveQueueRecv,this).start();
+    }
+
+    /**
+     * 向指定远程节点发送信息
+     */
     public Boolean sendMessage(Integer remoteNodeId, ByteBuffer request) {
         try {
             LinkedBlockingQueue<ByteBuffer> sendQueue = queueSendMap.get(remoteNodeId);
@@ -260,9 +294,9 @@ public class MasterNetworkManager {
         this.queueSendMap.remove(nodeId);
     }
 
-    public ByteBuffer takeSendQueue(Integer nodeId) throws InterruptedException {
+    public ByteBuffer takeSendMessage(Integer nodeId) throws InterruptedException {
         LinkedBlockingQueue<ByteBuffer> queue = queueSendMap.get(nodeId);
-        if(queue == null) {
+        if (queue == null) {
             throw new IllegalArgumentException("error nodeId, can not find sendQueue by this nodeId:" + nodeId);
         }
         return queue.take();
@@ -270,19 +304,20 @@ public class MasterNetworkManager {
 
     /**
      * 阻塞式获取消息
+     *
      * @return
      */
-    public ByteBuffer takeRecvMessage() {
-        try {
-            return queueRecv.take();
-        } catch (InterruptedException e) {
-            LOG.error("take message from queueRecv error", e);
-            return null;
-        }
+    public ByteBuffer takeMasterRecvMessage() throws InterruptedException {
+        return masterQueueRecv.take();
     }
 
-    public void addToRecvQueue(ByteBuffer message) throws InterruptedException {
-        queueRecv.put(message);
+    /**
+     * 阻塞式获取消息
+     *
+     * @return
+     */
+    public ByteBuffer takeSlaveRecvMessage() throws InterruptedException {
+        return slaveQueueRecv.take();
     }
 
     /**
@@ -291,85 +326,56 @@ public class MasterNetworkManager {
      * @author wangsz
      * @create 2020-04-10
      **/
-    class MasterConnectionListener extends Thread {
+    class MasterConnectionListener extends AbstractConnectionListener {
 
         private final Logger LOG = LoggerFactory.getLogger(MasterConnectionListener.class);
 
-        private final int DEFAULT_RETRIES = 3;
-
-        private ServerSocket serverSocket;
-
-        /**
-         * 已重试次数
-         */
-        private int retyies = 0;
-
-        public MasterConnectionListener() {
+        public MasterConnectionListener(NetworkManager networkManager) {
+            super(networkManager);
             init();
         }
 
         private void init() {
             GovernServerConfig config = GovernServerConfig.getInstance();
+            bindPort = self.getMasterConnectPort();
         }
-
 
         @Override
-        public void run() {
-            Socket client = null;
-            while (NodeStatus.isRunning() && retyies <= DEFAULT_RETRIES) {
-                try {
-                    int port = self.getMasterConnectPort();
-                    InetSocketAddress endpoint = new InetSocketAddress(port);
-                    serverSocket = new ServerSocket();
-                    //与其他节点意外断开连接后，此时连接处于timeout状态，无法重新绑定端口号
-                    //设置为true后，允许重新对端口号进行绑定连接
-                    //也就说服务端此时还没有真正关闭这个端口
-                    serverSocket.setReuseAddress(true);
-                    serverSocket.bind(endpoint);
-                    LOG.info("binding port " + port + " success");
-                    while (NodeStatus.isRunning()) {
-                        client = this.serverSocket.accept();
-                        setSockOpts(client);
-                        LOG.info("Received connection request "
-                                + NetUtils.formatInetAddr((InetSocketAddress) client.getRemoteSocketAddress()));
-                        Integer remoteNodeId = receiveConnection(client);
-                        if(remoteNodeId != null) {
-                            startIOThreads(remoteNodeId, client);
-                        }
-                        retyies = 0;
-                    }
-                } catch (IOException e) {
-                    if (!NodeStatus.isRunning()) {
-                        break;
-                    }
-                    LOG.error("Exception while listening", e);
-                    retyies++;
-                    if (retyies <= DEFAULT_RETRIES) {
-                        LOG.info(retyies + " times retry to listen other master node connect");
-                    }
-                    try {
-                        serverSocket.close();
-                        Thread.sleep(1000);
-                    } catch (IOException ie) {
-                        LOG.error("Error closing server socket", ie);
-                    } catch (InterruptedException ie) {
-                        LOG.error("MasterConnectionListener Interrupted while sleeping. " +
-                                "Ignoring exception", ie);
-                    }
-                    closeSocket(client);
-                }
+        protected void doAccept(Socket client) {
+            Integer remoteNodeId = receiveConnection(client);
+            if(remoteNodeId != null) {
+                startMasterSocketIOThreads(remoteNodeId, client);
             }
-            NodeStatus nodeStatus = NodeStatus.getInstance();
-            nodeStatus.setStatus(NodeStatus.FATAL);
-            LOG.error("failed to listen other master node's connection. going to shutdown system");
+        }
+    }
+
+    /**
+     * slave节点网络连接监听器
+     *
+     * @author wangsz
+     * @create 2020-04-10
+     **/
+    class SlaveConnectionListener extends AbstractConnectionListener {
+
+        private final Logger LOG = LoggerFactory.getLogger(MasterConnectionListener.class);
+
+        public SlaveConnectionListener(NetworkManager networkManager) {
+            super(networkManager);
+            init();
         }
 
-        private void setSockOpts(Socket sock) throws SocketException {
-            sock.setTcpNoDelay(true);
-            //读取数据时超时时间为0，即没有超时时间，阻塞读取
-            sock.setSoTimeout(0);
+        private void init() {
+            bindPort = self.getSlaveConnectPort();
         }
 
+        @Override
+        protected void doAccept(Socket client) {
+            Integer remoteNodeId = readNodeId(client);
+            if(remoteNodeId != null) {
+                addSocket(remoteNodeId, client);
+                startSlvaeSocketIOThreads(remoteNodeId, client);
+            }
+        }
     }
 
     class RetryConnectMasterNodeThread extends Thread {

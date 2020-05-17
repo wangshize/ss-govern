@@ -8,6 +8,7 @@ import java.io.DataInputStream;
 import java.io.IOException;
 import java.net.Socket;
 import java.nio.ByteBuffer;
+import java.util.concurrent.LinkedBlockingQueue;
 
 /**
  * master节点间网络连接读线程
@@ -23,14 +24,18 @@ public class MasterNetworkReadThread extends Thread {
 
     private Integer remoteNodeId;
 
-    private MasterNetworkManager manager;
+    private LinkedBlockingQueue<ByteBuffer> queueRecv;
+
+    private NetworkManager manager;
 
     private DataInputStream inputStream;
 
     public MasterNetworkReadThread(Integer remoteNodeId, Socket socket,
-                                   MasterNetworkManager masterNetworkManager) {
+                                   LinkedBlockingQueue<ByteBuffer> queueRecv,
+                                   NetworkManager masterNetworkManager) {
         this.manager = masterNetworkManager;
         this.remoteNodeId = remoteNodeId;
+        this.queueRecv = queueRecv;
         this.socket = socket;
         try {
             this.inputStream = new DataInputStream(socket.getInputStream());
@@ -56,10 +61,12 @@ public class MasterNetworkReadThread extends Thread {
         while (NodeStatus.isRunning()) {
             try {
                 int messageLength = inputStream.readInt();
+                //todo  处理拆包问题
                 byte[] messageByte = new byte[messageLength];
                 inputStream.readFully(messageByte, 0, messageLength);
                 ByteBuffer messageBuffer = ByteBuffer.wrap(messageByte);
-                manager.addToRecvQueue(messageBuffer);
+                messageBuffer.rewind();
+                queueRecv.put(messageBuffer);
                 if(LOG.isDebugEnabled()) {
                     LOG.debug("receive message from node : " + socket.getRemoteSocketAddress()
                             + ", message size is " + messageBuffer.capacity());

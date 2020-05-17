@@ -55,7 +55,7 @@ public class GovernServer {
         }
     }
 
-    private static void startNode(String nodeRole) {
+    private static void startNode(String nodeRole) throws InterruptedException {
         if(NodeRole.MASTER.equals(nodeRole)) {
             MasterNode master = new MasterNode();
             master.start();

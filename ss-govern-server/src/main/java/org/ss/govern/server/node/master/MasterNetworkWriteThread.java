@@ -26,14 +26,18 @@ public class MasterNetworkWriteThread extends Thread {
 
     private Integer nodeId;
 
-    private MasterNetworkManager manager;
+    private LinkedBlockingQueue<ByteBuffer> queueSend;
+
+    private NetworkManager manager;
 
     DataOutputStream dout = null;
 
     public MasterNetworkWriteThread(Integer nodeId, Socket socket,
-                                    MasterNetworkManager masterNetworkManager) {
+                                    LinkedBlockingQueue<ByteBuffer> queueSend,
+                                    NetworkManager masterNetworkManager) {
         this.manager = masterNetworkManager;
         this.nodeId = nodeId;
+        this.queueSend = queueSend;
         this.socket = socket;
         try {
             dout = new DataOutputStream(socket.getOutputStream());
@@ -61,7 +65,7 @@ public class MasterNetworkWriteThread extends Thread {
         LOG.info("start a write IO thread for remote node:" + socket.getRemoteSocketAddress());
         while (NodeStatus.isRunning()) {
             try {
-                ByteBuffer message = manager.takeSendQueue(nodeId);
+                ByteBuffer message = queueSend.take();
                 dout.writeInt(message.capacity());
                 dout.write(message.array());
                 dout.flush();
