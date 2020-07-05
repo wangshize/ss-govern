@@ -4,17 +4,12 @@ package org.ss.govern.server.node;
  * @author wangsz
  * @create 2020-04-10
  **/
-public class NodeInfo {
+public class NodePeer {
 
     /**
      * 节点ID
      */
     private Integer nodeId;
-
-    /**
-     * 是否参与controller选举
-     */
-    private Boolean isControllerCandidate;
 
     /**
      * 节点ip
@@ -36,7 +31,7 @@ public class NodeInfo {
      */
     private Integer clientConnectPort;
 
-    public NodeInfo(Integer nodeId, String ip, Integer masterConnectPort,
+    public NodePeer(Integer nodeId, String ip, Integer masterConnectPort,
                     Integer slaveConnectPort, Integer clientConnectPort) {
         this.nodeId = nodeId;
         this.ip = ip;
@@ -51,14 +46,6 @@ public class NodeInfo {
 
     public String getIp() {
         return ip;
-    }
-
-    public Boolean getControllerCandidate() {
-        return isControllerCandidate;
-    }
-
-    public void setControllerCandidate(Boolean controllerCandidate) {
-        isControllerCandidate = controllerCandidate;
     }
 
     public Integer getMasterConnectPort() {

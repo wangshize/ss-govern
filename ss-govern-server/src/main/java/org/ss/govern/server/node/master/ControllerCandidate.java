@@ -4,9 +4,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.ss.govern.core.constants.MasterNodeRole;
 import org.ss.govern.server.config.GovernServerConfig;
-import org.ss.govern.server.node.NodeInfo;
+import org.ss.govern.server.node.NetworkManager;
+import org.ss.govern.server.node.NodeManager;
 import org.ss.govern.server.node.NodeStatus;
-import org.ss.govern.server.node.RemoteNodeManager;
 
 import java.nio.ByteBuffer;
 import java.util.Collection;
@@ -25,7 +25,7 @@ public class ControllerCandidate {
 
     private NetworkManager masterNetworkManager;
 
-    private RemoteNodeManager remoteNodeManager;
+    private NodeManager remoteNodeManager;
 
     private GovernServerConfig serverConfig;
 
@@ -36,7 +36,7 @@ public class ControllerCandidate {
     private Integer selfId;
 
     public ControllerCandidate(NetworkManager masterNetworkManager,
-                               RemoteNodeManager remoteNodeManager) {
+                               NodeManager remoteNodeManager) {
         this.masterNetworkManager = masterNetworkManager;
         this.remoteNodeManager = remoteNodeManager;
         this.serverConfig = GovernServerConfig.getInstance();
@@ -47,12 +47,12 @@ public class ControllerCandidate {
      * 投票选举controller
      * @return
      */
-    public Integer voteForControllerElection() throws InterruptedException {
+    public MasterNodeRole voteForControllerElection() throws InterruptedException {
         this.currentVote = new Vote(selfId, selfId, voteRound);
         HashMap<Integer, Vote> recvSet = new HashMap<>();
         recvSet.put(selfId, currentVote);
 
-        List<NodeInfo> otherControllerCandidates = remoteNodeManager.getOtherControllerCandidate();
+        List<MasterNodePeer> otherControllerCandidates = remoteNodeManager.getOtherControllerCandidate();
         Integer controllerId;
         do {
             controllerId = startNextRoundVote(otherControllerCandidates, recvSet);
@@ -63,14 +63,15 @@ public class ControllerCandidate {
         return controllerId.equals(selfId) ? MasterNodeRole.CONTROLLER : MasterNodeRole.CANDIDATE;
     }
 
-    private Integer startNextRoundVote(List<NodeInfo> otherControllerCandidates, HashMap<Integer, Vote> recvSet) throws InterruptedException {
+    private Integer startNextRoundVote(List<MasterNodePeer> otherControllerCandidates, HashMap<Integer, Vote> recvSet) throws InterruptedException {
         int candidateCount = (1 + otherControllerCandidates.size());
         int quorum = candidateCount / 2 + 1;
         Vote vote = this.currentVote;
+        recvSet.put(vote.getVoterId(), vote);
         if(LOG.isDebugEnabled()) {
             LOG.debug("start "  + voteRound + " round vote");
         }
-        for (NodeInfo node : otherControllerCandidates) {
+        for (MasterNodePeer node : otherControllerCandidates) {
             Integer remoteNodeId = node.getNodeId();
             masterNetworkManager.sendMessage(remoteNodeId, vote.toRequestByteBuffer());
         }

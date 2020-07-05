@@ -1,8 +1,7 @@
-package org.ss.govern.server.node.master;
+package org.ss.govern.server.node;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.ss.govern.server.node.NodeStatus;
 
 import java.io.*;
 import java.net.Socket;
@@ -15,9 +14,9 @@ import java.util.concurrent.LinkedBlockingQueue;
  * @author wangsz
  * @create 2020-04-11
  **/
-public class MasterNetworkWriteThread extends Thread {
+public class NetworkWriteThread extends Thread {
 
-    private static final Logger LOG = LoggerFactory.getLogger(MasterNetworkWriteThread.class);
+    private static final Logger LOG = LoggerFactory.getLogger(NetworkWriteThread.class);
 
     /**
      * master节点间的网络连接
@@ -32,9 +31,9 @@ public class MasterNetworkWriteThread extends Thread {
 
     DataOutputStream dout = null;
 
-    public MasterNetworkWriteThread(Integer nodeId, Socket socket,
-                                    LinkedBlockingQueue<ByteBuffer> queueSend,
-                                    NetworkManager masterNetworkManager) {
+    public NetworkWriteThread(Integer nodeId, Socket socket,
+                              LinkedBlockingQueue<ByteBuffer> queueSend,
+                              NetworkManager masterNetworkManager) {
         this.manager = masterNetworkManager;
         this.nodeId = nodeId;
         this.queueSend = queueSend;

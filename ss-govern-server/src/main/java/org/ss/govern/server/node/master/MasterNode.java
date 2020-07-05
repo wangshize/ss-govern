@@ -2,8 +2,10 @@ package org.ss.govern.server.node.master;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.ss.govern.core.constants.MasterNodeRole;
 import org.ss.govern.server.config.GovernServerConfig;
-import org.ss.govern.server.node.RemoteNodeManager;
+import org.ss.govern.server.node.NetworkManager;
+import org.ss.govern.server.node.NodeManager;
 
 /**
  * @author wangsz
@@ -18,12 +20,12 @@ public class MasterNode {
 
     private NetworkManager masterNetworkManager;
 
-    private RemoteNodeManager remoteNodeManager;
+    private NodeManager remoteNodeManager;
 
     private GovernServerConfig serverConfig;
 
     public MasterNode() {
-        this.remoteNodeManager = new RemoteNodeManager();
+        this.remoteNodeManager = new NodeManager();
         this.masterNetworkManager = new NetworkManager(remoteNodeManager);
         this.controllerCandidate = new ControllerCandidate(masterNetworkManager, remoteNodeManager);
         this.serverConfig = GovernServerConfig.getInstance();
@@ -38,10 +40,12 @@ public class MasterNode {
         masterNetworkManager.waitMostNodesConnected();
         //选举controller
         Boolean isControllerCandidate = serverConfig.getIsControllerCandidate();
-        if(isControllerCandidate) {
-            Integer role = controllerCandidate.voteForControllerElection();
-            LOG.info("vote finish,masterNodeRole is " + role);
+        if (isControllerCandidate) {
+            MasterNodeRole role = controllerCandidate.voteForControllerElection();
+            LOG.info("vote finish, currentNodeRole is " + role);
         }
         //启动线程监听slave节点发起的连接请求
+        masterNetworkManager.waitSlaveNodeConnect();
     }
+
 }

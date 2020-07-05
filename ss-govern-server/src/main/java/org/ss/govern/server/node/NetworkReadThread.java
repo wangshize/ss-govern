@@ -1,8 +1,7 @@
-package org.ss.govern.server.node.master;
+package org.ss.govern.server.node;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.ss.govern.server.node.NodeStatus;
 
 import java.io.DataInputStream;
 import java.io.IOException;
@@ -16,9 +15,9 @@ import java.util.concurrent.LinkedBlockingQueue;
  * @author wangsz
  * @create 2020-04-11
  **/
-public class MasterNetworkReadThread extends Thread {
+public class NetworkReadThread extends Thread {
 
-    private static final Logger LOG = LoggerFactory.getLogger(MasterNetworkReadThread.class);
+    private static final Logger LOG = LoggerFactory.getLogger(NetworkReadThread.class);
 
     private Socket socket;
 
@@ -30,9 +29,9 @@ public class MasterNetworkReadThread extends Thread {
 
     private DataInputStream inputStream;
 
-    public MasterNetworkReadThread(Integer remoteNodeId, Socket socket,
-                                   LinkedBlockingQueue<ByteBuffer> queueRecv,
-                                   NetworkManager masterNetworkManager) {
+    public NetworkReadThread(Integer remoteNodeId, Socket socket,
+                             LinkedBlockingQueue<ByteBuffer> queueRecv,
+                             NetworkManager masterNetworkManager) {
         this.manager = masterNetworkManager;
         this.remoteNodeId = remoteNodeId;
         this.queueRecv = queueRecv;

@@ -1,8 +1,7 @@
-package org.ss.govern.server.node.master;
+package org.ss.govern.server.node;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.ss.govern.server.node.NodeStatus;
 import org.ss.govern.utils.NetUtils;
 
 import java.io.IOException;
@@ -53,8 +52,8 @@ public abstract class AbstractConnectionListener extends Thread {
                 InetSocketAddress endpoint = new InetSocketAddress(bindPort);
                 serverSocket = new ServerSocket();
                 //与其他节点意外断开连接后，此时连接处于timeout状态，无法重新绑定端口号
-                //设置为true后，允许重新对端口号进行绑定连接
                 //也就说服务端此时还没有真正关闭这个端口
+                //设置为true后，允许重新对端口号进行绑定连接
                 serverSocket.setReuseAddress(true);
                 serverSocket.bind(endpoint);
                 LOG.info("binding port " + bindPort + " success");
@@ -75,21 +74,29 @@ public abstract class AbstractConnectionListener extends Thread {
                 if (retyies <= DEFAULT_RETRIES) {
                     LOG.info(retyies + " times retry to listen other node connect");
                 }
-                try {
-                    serverSocket.close();
-                    Thread.sleep(1000);
-                } catch (IOException ie) {
-                    LOG.error("Error closing server socket", ie);
-                } catch (InterruptedException ie) {
-                    LOG.error("ConnectionListener Interrupted while sleeping. " +
-                            "Ignoring exception", ie);
-                }
-                networkManager.closeSocket(client);
+                closeSocket(client);
             }
         }
         NodeStatus nodeStatus = NodeStatus.getInstance();
         nodeStatus.setStatus(NodeStatus.FATAL);
         LOG.error("failed to listen other node's connection. going to shutdown system");
+    }
+
+    protected boolean checkNodeIsConnected(Integer nodeId) {
+        return networkManager.getConnectByNodeId(nodeId) != null;
+    }
+
+    private void closeSocket(Socket client) {
+        try {
+            serverSocket.close();
+            Thread.sleep(1000);
+        } catch (IOException ie) {
+            LOG.error("Error closing server socket", ie);
+        } catch (InterruptedException ie) {
+            LOG.error("ConnectionListener Interrupted while sleeping. " +
+                    "Ignoring exception", ie);
+        }
+        networkManager.closeSocket(client);
     }
 
     protected abstract void doAccept(Socket client);

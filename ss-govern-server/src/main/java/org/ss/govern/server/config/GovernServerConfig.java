@@ -1,16 +1,16 @@
 package org.ss.govern.server.config;
 
+import lombok.Getter;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.ss.govern.server.ConfigurationException;
-import org.ss.govern.server.node.NodeInfo;
+import org.ss.govern.server.node.NodePeer;
 
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.IOException;
-import java.util.List;
 import java.util.Properties;
 
 /**
@@ -48,6 +48,12 @@ public class GovernServerConfig {
      * 节点编号
      */
     private Integer nodeId;
+
+    /**
+     * 节点地址端口
+     */
+    @Getter
+    private String nodeAddr;
 
     /**
      * 是否为controller候选节点
@@ -97,6 +103,7 @@ public class GovernServerConfig {
                     }
                 }
             }
+            this.nodeAddr = configProperties.getProperty("node.address");
             LOG.info("successfully validation all configuration entries");
         } catch (IllegalArgumentException e) {
             throw new ConfigurationException("error processing " + configPath, e);

@@ -1,12 +1,14 @@
-package org.ss.govern.server.node.master;
+package org.ss.govern.server.node;
 
 import org.apache.commons.collections.CollectionUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.ss.govern.server.config.ConfigurationParser;
 import org.ss.govern.server.config.GovernServerConfig;
-import org.ss.govern.server.node.NodeInfo;
-import org.ss.govern.server.node.NodeStatus;
-import org.ss.govern.server.node.RemoteNodeManager;
+import org.ss.govern.server.node.master.MasterConnectionListener;
+import org.ss.govern.server.node.master.MasterNodePeer;
+import org.ss.govern.server.node.master.SlaveConnectionListener;
+import org.ss.govern.server.node.slave.SlaveNodePeer;
 import org.ss.govern.utils.ThreadUtils;
 
 import java.io.*;
@@ -37,34 +39,44 @@ public class NetworkManager {
 
     public static final long PROTOCOL_VERSION = -65536L;
 
-    private RemoteNodeManager remoteNodeManager;
+    private NodeManager nodeManager;
 
-    private Map<Integer, NodeInfo> remoteNodes;
+    private GovernServerConfig config;
 
     /**
      * 等待重试发起连接的master列表
      */
-    private List<NodeInfo> retryConnectOtherMasterNodes = new CopyOnWriteArrayList<>();
+    private List<NodePeer> retryConnectOtherMasterNodes = new CopyOnWriteArrayList<>();
 
     /**
-     * 其他远程master节点建立好的连接
+     * 其他远程节点建立好的连接
      * key nodeId
      * value socket
      */
     private ConcurrentHashMap<Integer, Socket> remoteNodeSockets = new ConcurrentHashMap<>();
 
+    /**
+     * master节点向外发送数据队列
+     */
     private Map<Integer, LinkedBlockingQueue<ByteBuffer>> queueSendMap = new ConcurrentHashMap<>();
 
+    /**
+     * slave节点发送的数据接收队列
+     */
+    private Map<Integer, LinkedBlockingQueue<ByteBuffer>> slaveQueueRecvMap = new ConcurrentHashMap<>();
+
+    /**
+     * master节点发送的数据接收队列
+     */
     private LinkedBlockingQueue<ByteBuffer> masterQueueRecv = new LinkedBlockingQueue<>();
 
-    private LinkedBlockingQueue<ByteBuffer> slaveQueueRecv = new LinkedBlockingQueue<>();
+    private NodePeer self;
 
-    private NodeInfo self;
-
-    public NetworkManager(RemoteNodeManager remoteNodeManager) {
-        this.remoteNodeManager = remoteNodeManager;
-        this.remoteNodes = remoteNodeManager.getRemoteMasterNodes();
-        this.self = getSelf();
+    public NetworkManager(NodeManager nodeManager) {
+        this.config = GovernServerConfig.getInstance();
+        this.nodeManager = nodeManager;
+        ConfigurationParser configurationParser = ConfigurationParser.getInstance();
+        this.self = configurationParser.getSelfNodePeer();
         new RetryConnectMasterNodeThread().start();
     }
 
@@ -72,18 +84,21 @@ public class NetworkManager {
         new MasterConnectionListener(this).start();
     }
 
-    public void waitSlaveNodeConnect() {
-        new SlaveConnectionListener(this).start();
-    }
-
     public void connectOtherMasterNodes() {
-        List<NodeInfo> beforeMasterNodes = getBeforeMasterNodes();
+        List<NodePeer> beforeMasterNodes = getBeforeMasterNodes();
         if (CollectionUtils.isEmpty(beforeMasterNodes)) {
             return;
         }
-        for (NodeInfo beforeMasterNode : beforeMasterNodes) {
+        for (NodePeer beforeMasterNode : beforeMasterNodes) {
             connectBeforeMasterNode(beforeMasterNode);
         }
+    }
+
+    /**
+     * 等待自己的slave节点发起连接
+     */
+    public void waitSlaveNodeConnect() {
+        new SlaveConnectionListener(this).start();
     }
 
     /**
@@ -91,15 +106,16 @@ public class NetworkManager {
      */
     public void waitMostNodesConnected() {
         //无需等待所有节点连接，只需要超过一半的节点建立成功即可开始选举
-        int mostNodeNum = remoteNodes.size() + 1;
+        Integer masterNumInCluster = nodeManager.getMasterNumInCluster();
+        int mostNodeNum = masterNumInCluster / 2 + 1;
         while (NodeStatus.isRunning() && remoteNodeSockets.size() < mostNodeNum) {
             LOG.info("wait for other node connect....");
             ThreadUtils.sleep(2000);
         }
-        LOG.info("all node connect successful.....`");
+        LOG.info("most node connect successful.....`");
     }
 
-    private boolean connectBeforeMasterNode(NodeInfo nodeInfo) {
+    private boolean connectBeforeMasterNode(NodePeer nodeInfo) {
         int retries = 0;
         String ip = nodeInfo.getIp();
         int port = nodeInfo.getMasterConnectPort();
@@ -113,8 +129,9 @@ public class NetworkManager {
                 socket.setSoTimeout(0);
                 socket.connect(endpoint, CONNECT_TIMEOUT);
                 LOG.info("successfully connected master node :" + ip + ":" + port);
-                initiateConnection(socket, self.getNodeId());
                 addSocket(nodeId, socket);
+                addRemoteMasterNode(new MasterNodePeer(nodeId, true));
+                initiateConnection(socket, self.getNodeId());
                 startMasterSocketIOThreads(nodeId, socket);
                 return true;
             } catch (IOException e) {
@@ -134,16 +151,18 @@ public class NetworkManager {
         return false;
     }
 
+    /**
+     * master节点响应其他master的连接
+     * @param sock
+     * @param sid
+     */
     public void initiateConnection(final Socket sock, final Integer sid) {
         DataOutputStream dout;
         try {
             BufferedOutputStream buf = new BufferedOutputStream(sock.getOutputStream());
             dout = new DataOutputStream(buf);
 
-            // Sending id and challenge
-            // represents protocol version (in other words - message type)
             GovernServerConfig serverConfig = GovernServerConfig.getInstance();
-            dout.writeLong(PROTOCOL_VERSION);
             dout.writeInt(sid);
             dout.writeInt(serverConfig.getIsControllerCandidate() ? 1 : 0);
             dout.flush();
@@ -153,15 +172,22 @@ public class NetworkManager {
         }
     }
 
-    public Integer readNodeId(Socket sock) {
+    /**
+     * @param sock
+     * @return remoteNodeId
+     */
+    public Integer receiveMasterConnection(final Socket sock) {
         DataInputStream din = null;
         Integer remoteNodeId = null;
         try {
             din = new DataInputStream(
                     new BufferedInputStream(sock.getInputStream()));
-            //预留
-            Long protocolVersion = din.readLong();
+//            int messageLength = din.readInt();
             remoteNodeId = din.readInt();
+            boolean isControllerCandidate = din.readInt() == 1 ? true : false;
+            nodeManager.updateNodeIsControllerCandidate(remoteNodeId, isControllerCandidate);
+            addRemoteMasterNode(new MasterNodePeer(remoteNodeId, isControllerCandidate));
+            addSocket(remoteNodeId, sock);
         } catch (IOException e) {
             LOG.error("Exception handling connection, addr: {}, closing server connection",
                     sock.getRemoteSocketAddress());
@@ -170,25 +196,16 @@ public class NetworkManager {
         return remoteNodeId;
     }
 
-    /**
-     * @param sock
-     * @return remoteNodeId
-     */
-    public Integer receiveConnection(final Socket sock) {
+    public Integer receiveSlaveConnection(final Socket sock) {
         DataInputStream din = null;
         Integer remoteNodeId = null;
         try {
             din = new DataInputStream(
                     new BufferedInputStream(sock.getInputStream()));
-            //预留
-            Long protocolVersion = din.readLong();
+            int messageLength = din.readInt();
             remoteNodeId = din.readInt();
-            boolean isControllerCandidate = din.readInt() == 1 ? true : false;
-            remoteNodeManager.updateNodeIsControllerCandidate(remoteNodeId, isControllerCandidate);
             addSocket(remoteNodeId, sock);
-            GovernServerConfig serverConfig = GovernServerConfig.getInstance();
-            Integer sid = serverConfig.getNodeId();
-            initiateConnection(sock, sid);
+            addRemoteSlaveNode(new SlaveNodePeer(remoteNodeId));
         } catch (IOException e) {
             LOG.error("Exception handling connection, addr: {}, closing server connection",
                     sock.getRemoteSocketAddress());
@@ -202,10 +219,12 @@ public class NetworkManager {
      *
      * @return
      */
-    private List<NodeInfo> getBeforeMasterNodes() {
+    private List<NodePeer> getBeforeMasterNodes() {
         Integer nodeId = GovernServerConfig.getInstance().getNodeId();
-        List<NodeInfo> beforeMasterNode = new ArrayList<>();
-        for (NodeInfo nodeInfo : remoteNodes.values()) {
+        List<NodePeer> beforeMasterNode = new ArrayList<>();
+        ConfigurationParser configurationParser = ConfigurationParser.getInstance();
+        List<NodePeer> peers = configurationParser.parseMasterNodeServers();
+        for (NodePeer nodeInfo : peers) {
             if (nodeInfo.getNodeId() < nodeId) {
                 beforeMasterNode.add(nodeInfo);
             }
@@ -218,7 +237,7 @@ public class NetworkManager {
      *
      * @param client
      */
-    private void addSocket(Integer nodeId, Socket client) {
+    public void addSocket(Integer nodeId, Socket client) {
         InetSocketAddress remoteAddr = (InetSocketAddress) client.getRemoteSocketAddress();
         String remoteAddrHostName = remoteAddr.getHostName();
         if (nodeId == null) {
@@ -235,6 +254,26 @@ public class NetworkManager {
         }
     }
 
+    /**
+     * 添加一个远程master节点
+     * @param masterNodePeer
+     */
+    public void addRemoteMasterNode(MasterNodePeer masterNodePeer) {
+        nodeManager.addRemoteMasterNode(masterNodePeer);
+    }
+
+    /**
+     * 添加一个远程slave节点
+     * @param slaveNodePeer
+     */
+    public void addRemoteSlaveNode(SlaveNodePeer slaveNodePeer) {
+        nodeManager.addRemoteSlaveNode(slaveNodePeer);
+    }
+
+    public Socket getConnectByNodeId(Integer nodeId) {
+        return remoteNodeSockets.get(nodeId);
+    }
+
     public void closeSocket(Socket sock) {
         if (sock == null) {
             return;
@@ -246,12 +285,11 @@ public class NetworkManager {
         }
     }
 
-    private NodeInfo getSelf() {
-        Integer nodeId = GovernServerConfig.getInstance().getNodeId();
-        NodeInfo self = remoteNodes.get(nodeId);
+    public NodePeer getSelf() {
         if (self != null) {
             return self;
         }
+        Integer nodeId = GovernServerConfig.getInstance().getNodeId();
         LOG.error(String.format("nodeId = %s addr config can not find", nodeId));
         NodeStatus nodeStatus = NodeStatus.getInstance();
         nodeStatus.setStatus(NodeStatus.FATAL);
@@ -263,8 +301,8 @@ public class NetworkManager {
         if(queueSendMap.putIfAbsent(remoteNodeId, masterQueueSend) != null) {
             throw new IllegalArgumentException("nodeId : " + remoteNodeId + " is already exist");
         }
-        new MasterNetworkWriteThread(remoteNodeId, socket, masterQueueSend,this).start();
-        new MasterNetworkReadThread(remoteNodeId, socket, masterQueueRecv,this).start();
+        new NetworkWriteThread(remoteNodeId, socket, masterQueueSend,this).start();
+        new NetworkReadThread(remoteNodeId, socket, masterQueueRecv,this).start();
     }
 
     public void startSlvaeSocketIOThreads(Integer remoteNodeId, Socket socket) {
@@ -272,8 +310,12 @@ public class NetworkManager {
         if(queueSendMap.putIfAbsent(remoteNodeId, slaveQueueSend) != null) {
             throw new IllegalArgumentException("nodeId : " + remoteNodeId + " is already exist");
         }
-        new MasterNetworkWriteThread(remoteNodeId, socket, slaveQueueSend,this).start();
-        new MasterNetworkReadThread(remoteNodeId, socket, slaveQueueRecv,this).start();
+        LinkedBlockingQueue<ByteBuffer> slaveQueueRecv = new LinkedBlockingQueue<>();
+        if(slaveQueueRecvMap.putIfAbsent(remoteNodeId, slaveQueueRecv) != null) {
+            throw new IllegalArgumentException("nodeId : " + remoteNodeId + " is already exist");
+        }
+        new NetworkWriteThread(remoteNodeId, socket, slaveQueueSend,this).start();
+        new NetworkReadThread(remoteNodeId, socket, slaveQueueRecv,this).start();
     }
 
     /**
@@ -294,16 +336,8 @@ public class NetworkManager {
         this.queueSendMap.remove(nodeId);
     }
 
-    public ByteBuffer takeSendMessage(Integer nodeId) throws InterruptedException {
-        LinkedBlockingQueue<ByteBuffer> queue = queueSendMap.get(nodeId);
-        if (queue == null) {
-            throw new IllegalArgumentException("error nodeId, can not find sendQueue by this nodeId:" + nodeId);
-        }
-        return queue.take();
-    }
-
     /**
-     * 阻塞式获取消息
+     * 阻塞式获取master消息
      *
      * @return
      */
@@ -311,71 +345,8 @@ public class NetworkManager {
         return masterQueueRecv.take();
     }
 
-    /**
-     * 阻塞式获取消息
-     *
-     * @return
-     */
-    public ByteBuffer takeSlaveRecvMessage() throws InterruptedException {
-        return slaveQueueRecv.take();
-    }
-
-    /**
-     * 网络连接监听器
-     *
-     * @author wangsz
-     * @create 2020-04-10
-     **/
-    class MasterConnectionListener extends AbstractConnectionListener {
-
-        private final Logger LOG = LoggerFactory.getLogger(MasterConnectionListener.class);
-
-        public MasterConnectionListener(NetworkManager networkManager) {
-            super(networkManager);
-            init();
-        }
-
-        private void init() {
-            GovernServerConfig config = GovernServerConfig.getInstance();
-            bindPort = self.getMasterConnectPort();
-        }
-
-        @Override
-        protected void doAccept(Socket client) {
-            Integer remoteNodeId = receiveConnection(client);
-            if(remoteNodeId != null) {
-                startMasterSocketIOThreads(remoteNodeId, client);
-            }
-        }
-    }
-
-    /**
-     * slave节点网络连接监听器
-     *
-     * @author wangsz
-     * @create 2020-04-10
-     **/
-    class SlaveConnectionListener extends AbstractConnectionListener {
-
-        private final Logger LOG = LoggerFactory.getLogger(MasterConnectionListener.class);
-
-        public SlaveConnectionListener(NetworkManager networkManager) {
-            super(networkManager);
-            init();
-        }
-
-        private void init() {
-            bindPort = self.getSlaveConnectPort();
-        }
-
-        @Override
-        protected void doAccept(Socket client) {
-            Integer remoteNodeId = readNodeId(client);
-            if(remoteNodeId != null) {
-                addSocket(remoteNodeId, client);
-                startSlvaeSocketIOThreads(remoteNodeId, client);
-            }
-        }
+    public void recvSlaveMessage(Integer nodeId, ByteBuffer message) {
+        slaveQueueRecvMap.get(nodeId).offer(message);
     }
 
     class RetryConnectMasterNodeThread extends Thread {
@@ -385,13 +356,13 @@ public class NetworkManager {
         @Override
         public void run() {
             while (NodeStatus.isRunning()) {
-                List<NodeInfo> retryConnectSuccessNodes = new ArrayList<>();
-                for (NodeInfo nodeInfo : retryConnectOtherMasterNodes) {
+                List<NodePeer> retryConnectSuccessNodes = new ArrayList<>();
+                for (NodePeer nodeInfo : retryConnectOtherMasterNodes) {
                     if (connectBeforeMasterNode(nodeInfo)) {
                         retryConnectSuccessNodes.add(nodeInfo);
                     }
                 }
-                for (NodeInfo successNode : retryConnectSuccessNodes) {
+                for (NodePeer successNode : retryConnectSuccessNodes) {
                     retryConnectOtherMasterNodes.remove(successNode);
                 }
                 try {
