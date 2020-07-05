@@ -3,7 +3,6 @@ package org.ss.govern.server.node;
 import lombok.Getter;
 import org.ss.govern.server.config.ConfigurationParser;
 import org.ss.govern.server.config.GovernServerConfig;
-import org.ss.govern.server.node.master.MasterNode;
 import org.ss.govern.server.node.master.MasterNodePeer;
 import org.ss.govern.server.node.slave.SlaveNodePeer;
 
@@ -75,7 +74,7 @@ public class NodeManager {
     public NodeManager() {
         this.serverConfig = GovernServerConfig.getInstance();
         ConfigurationParser configurationParser = ConfigurationParser.getInstance();
-        List<NodePeer> nodeInfoList = configurationParser.parseMasterNodeServers();
+        List<NodeAddress> nodeInfoList = configurationParser.parseMasterNodeServers();
         this.masterNumInCluster = nodeInfoList.size();
     }
 

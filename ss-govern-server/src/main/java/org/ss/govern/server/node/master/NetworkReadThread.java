@@ -1,7 +1,9 @@
-package org.ss.govern.server.node;
+package org.ss.govern.server.node.master;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.ss.govern.server.node.NetworkManager;
+import org.ss.govern.server.node.NodeStatus;
 
 import java.io.DataInputStream;
 import java.io.IOException;

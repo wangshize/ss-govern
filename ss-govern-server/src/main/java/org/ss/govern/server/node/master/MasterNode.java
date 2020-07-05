@@ -18,34 +18,34 @@ public class MasterNode {
 
     private ControllerCandidate controllerCandidate;
 
-    private NetworkManager masterNetworkManager;
+    private NetworkManager networkManager;
 
-    private NodeManager remoteNodeManager;
+    private NodeManager nodeManager;
 
     private GovernServerConfig serverConfig;
 
     public MasterNode() {
-        this.remoteNodeManager = new NodeManager();
-        this.masterNetworkManager = new NetworkManager(remoteNodeManager);
-        this.controllerCandidate = new ControllerCandidate(masterNetworkManager, remoteNodeManager);
+        this.nodeManager = new NodeManager();
+        this.networkManager = new NetworkManager(nodeManager);
+        this.controllerCandidate = new ControllerCandidate(networkManager, nodeManager);
         this.serverConfig = GovernServerConfig.getInstance();
     }
 
     public void start() throws InterruptedException {
         //等待id大于自己的节点来连接
-        masterNetworkManager.waitOtherMasterNodesConnect();
+        networkManager.waitOtherMasterNodesConnect();
         //连接id小于自己的master节点
-        masterNetworkManager.connectOtherMasterNodes();
+        networkManager.connectOtherMasterNodes();
         //等待大多数节点启动
-        masterNetworkManager.waitMostNodesConnected();
+        networkManager.waitMostNodesConnected();
         //选举controller
         Boolean isControllerCandidate = serverConfig.getIsControllerCandidate();
         if (isControllerCandidate) {
             MasterNodeRole role = controllerCandidate.voteForControllerElection();
-            LOG.info("vote finish, currentNodeRole is " + role);
+            LOG.info("vote finish, Current NodeRole is " + role);
         }
         //启动线程监听slave节点发起的连接请求
-        masterNetworkManager.waitSlaveNodeConnect();
+        networkManager.waitSlaveNodeConnect();
     }
 
 }

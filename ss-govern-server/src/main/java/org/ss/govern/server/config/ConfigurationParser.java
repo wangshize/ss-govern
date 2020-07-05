@@ -1,6 +1,6 @@
 package org.ss.govern.server.config;
 
-import org.ss.govern.server.node.NodePeer;
+import org.ss.govern.server.node.NodeAddress;
 
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -23,10 +23,10 @@ public class ConfigurationParser {
         return Singleton.instance;
     }
 
-    public List<NodePeer> parseMasterNodeServers() {
+    public List<NodeAddress> parseMasterNodeServers() {
         GovernServerConfig config = GovernServerConfig.getInstance();
         String masterNodeServers = config.getMasterNodeServers();
-        List<NodePeer> nodeInfoList = new ArrayList<>();
+        List<NodeAddress> nodeInfoList = new ArrayList<>();
         for (String masterNodeServer : masterNodeServers.split(";")) {
             String[] splitInfo = masterNodeServer.split(":");
             Integer nodeId = Integer.valueOf(splitInfo[0]);
@@ -34,13 +34,13 @@ public class ConfigurationParser {
             Integer masterConnectPort = Integer.valueOf(splitInfo[2]);
             Integer slaveConnectPort = Integer.valueOf(splitInfo[3]);
             Integer clientConnectPort = Integer.valueOf(splitInfo[4]);
-            nodeInfoList.add(new NodePeer(nodeId, ip, masterConnectPort, slaveConnectPort, clientConnectPort));
+            nodeInfoList.add(new NodeAddress(nodeId, ip, masterConnectPort, slaveConnectPort, clientConnectPort));
         }
-        nodeInfoList.sort(Comparator.comparing(NodePeer::getNodeId));
+        nodeInfoList.sort(Comparator.comparing(NodeAddress::getNodeId));
         return nodeInfoList;
     }
 
-    public NodePeer getSelfNodePeer() {
+    public NodeAddress getSelfNodePeer() {
         GovernServerConfig config = GovernServerConfig.getInstance();
         String nodeAddr = config.getNodeAddr();
         Integer nodeId = config.getNodeId();
@@ -49,7 +49,7 @@ public class ConfigurationParser {
         Integer masterConnectPort = Integer.valueOf(splitInfo[1]);
         Integer slaveConnectPort = Integer.valueOf(splitInfo[2]);
         Integer clientConnectPort = Integer.valueOf(splitInfo[3]);
-        return new NodePeer(nodeId, ip, masterConnectPort, slaveConnectPort, clientConnectPort);
+        return new NodeAddress(nodeId, ip, masterConnectPort, slaveConnectPort, clientConnectPort);
     }
 
 }

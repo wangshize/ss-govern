@@ -28,9 +28,12 @@ public class ConfigValidates {
         return true;
     }
 
-    public static boolean checkMasterNodeServers(String masterNodeServers) {
-        if (StringUtils.isEmpty(masterNodeServers)) {
+    public static boolean checkMasterNodeServers(String masterNodeServers, String nodeRole) {
+        if (StringUtils.isEmpty(masterNodeServers)
+                && NodeRole.MASTER.equals(nodeRole)) {
             throw new IllegalArgumentException("config master.node.servers can not be empty");
+        } else if(!NodeRole.MASTER.equals(nodeRole)) {
+            return true;
         }
         String[] masterNodeServersArray = masterNodeServers.split(";");
         for (String masterNodeServer : masterNodeServersArray) {

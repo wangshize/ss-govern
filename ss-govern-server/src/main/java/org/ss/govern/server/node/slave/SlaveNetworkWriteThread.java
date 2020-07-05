@@ -1,9 +1,12 @@
-package org.ss.govern.server.node;
+package org.ss.govern.server.node.slave;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.ss.govern.server.node.NetworkManager;
+import org.ss.govern.server.node.NodeStatus;
 
-import java.io.*;
+import java.io.DataOutputStream;
+import java.io.IOException;
 import java.net.Socket;
 import java.nio.ByteBuffer;
 import java.util.concurrent.LinkedBlockingQueue;
@@ -14,28 +17,25 @@ import java.util.concurrent.LinkedBlockingQueue;
  * @author wangsz
  * @create 2020-04-11
  **/
-public class NetworkWriteThread extends Thread {
+public class SlaveNetworkWriteThread extends Thread {
 
-    private static final Logger LOG = LoggerFactory.getLogger(NetworkWriteThread.class);
+    private static final Logger LOG = LoggerFactory.getLogger(SlaveNetworkWriteThread.class);
 
     /**
      * master节点间的网络连接
      */
     private Socket socket;
 
-    private Integer nodeId;
-
     private LinkedBlockingQueue<ByteBuffer> queueSend;
 
-    private NetworkManager manager;
+    private SlaveNetworkManager manager;
 
     DataOutputStream dout = null;
 
-    public NetworkWriteThread(Integer nodeId, Socket socket,
-                              LinkedBlockingQueue<ByteBuffer> queueSend,
-                              NetworkManager masterNetworkManager) {
+    public SlaveNetworkWriteThread(Socket socket,
+                                   LinkedBlockingQueue<ByteBuffer> queueSend,
+                                   SlaveNetworkManager masterNetworkManager) {
         this.manager = masterNetworkManager;
-        this.nodeId = nodeId;
         this.queueSend = queueSend;
         this.socket = socket;
         try {
@@ -48,15 +48,13 @@ public class NetworkWriteThread extends Thread {
     }
 
     private synchronized void finish() {
-        LOG.debug("Calling finish for " + nodeId);
+        LOG.debug("Calling finish for SlaveNetworkWriteThread");
         if(!NodeStatus.isRunning()){
             return;
         }
         NodeStatus.fatal();
         manager.closeSocket(socket);
         this.interrupt();
-        LOG.debug("Removing entry from senderWorkerMap sid=" + nodeId);
-        manager.removeSendQueue(nodeId);
     }
 
     @Override

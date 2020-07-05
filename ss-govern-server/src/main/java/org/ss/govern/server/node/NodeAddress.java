@@ -4,7 +4,7 @@ package org.ss.govern.server.node;
  * @author wangsz
  * @create 2020-04-10
  **/
-public class NodePeer {
+public class NodeAddress {
 
     /**
      * 节点ID
@@ -31,8 +31,8 @@ public class NodePeer {
      */
     private Integer clientConnectPort;
 
-    public NodePeer(Integer nodeId, String ip, Integer masterConnectPort,
-                    Integer slaveConnectPort, Integer clientConnectPort) {
+    public NodeAddress(Integer nodeId, String ip, Integer masterConnectPort,
+                       Integer slaveConnectPort, Integer clientConnectPort) {
         this.nodeId = nodeId;
         this.ip = ip;
         this.masterConnectPort = masterConnectPort;

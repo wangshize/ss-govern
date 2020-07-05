@@ -7,15 +7,23 @@ import org.ss.govern.server.config.ConfigurationParser;
 import org.ss.govern.server.config.GovernServerConfig;
 import org.ss.govern.server.node.master.MasterConnectionListener;
 import org.ss.govern.server.node.master.MasterNodePeer;
+import org.ss.govern.server.node.master.NetworkReadThread;
+import org.ss.govern.server.node.master.NetworkWriteThread;
 import org.ss.govern.server.node.master.SlaveConnectionListener;
 import org.ss.govern.server.node.slave.SlaveNodePeer;
 import org.ss.govern.utils.ThreadUtils;
 
-import java.io.*;
+import java.io.BufferedInputStream;
+import java.io.BufferedOutputStream;
+import java.io.DataInputStream;
+import java.io.DataOutputStream;
+import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.Socket;
 import java.nio.ByteBuffer;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.LinkedBlockingQueue;
@@ -37,8 +45,6 @@ public class NetworkManager {
     private final int DEFAULT_RETRIES = 3;
     private final int CONNECT_TIMEOUT = 5000;
 
-    public static final long PROTOCOL_VERSION = -65536L;
-
     private NodeManager nodeManager;
 
     private GovernServerConfig config;
@@ -46,7 +52,7 @@ public class NetworkManager {
     /**
      * 等待重试发起连接的master列表
      */
-    private List<NodePeer> retryConnectOtherMasterNodes = new CopyOnWriteArrayList<>();
+    private List<NodeAddress> retryConnectOtherMasterNodes = new CopyOnWriteArrayList<>();
 
     /**
      * 其他远程节点建立好的连接
@@ -70,7 +76,7 @@ public class NetworkManager {
      */
     private LinkedBlockingQueue<ByteBuffer> masterQueueRecv = new LinkedBlockingQueue<>();
 
-    private NodePeer self;
+    private NodeAddress self;
 
     public NetworkManager(NodeManager nodeManager) {
         this.config = GovernServerConfig.getInstance();
@@ -85,11 +91,11 @@ public class NetworkManager {
     }
 
     public void connectOtherMasterNodes() {
-        List<NodePeer> beforeMasterNodes = getBeforeMasterNodes();
+        List<NodeAddress> beforeMasterNodes = getBeforeMasterNodes();
         if (CollectionUtils.isEmpty(beforeMasterNodes)) {
             return;
         }
-        for (NodePeer beforeMasterNode : beforeMasterNodes) {
+        for (NodeAddress beforeMasterNode : beforeMasterNodes) {
             connectBeforeMasterNode(beforeMasterNode);
         }
     }
@@ -115,12 +121,12 @@ public class NetworkManager {
         LOG.info("most node connect successful.....`");
     }
 
-    private boolean connectBeforeMasterNode(NodePeer nodeInfo) {
-        int retries = 0;
+    private boolean connectBeforeMasterNode(NodeAddress nodeInfo) {
         String ip = nodeInfo.getIp();
         int port = nodeInfo.getMasterConnectPort();
         int nodeId = nodeInfo.getNodeId();
         LOG.info("try to connect master node :" + ip + ":" + port);
+        int retries = 0;
         while (NodeStatus.isRunning() && retries <= DEFAULT_RETRIES) {
             try {
                 InetSocketAddress endpoint = new InetSocketAddress(ip, port);
@@ -131,15 +137,17 @@ public class NetworkManager {
                 LOG.info("successfully connected master node :" + ip + ":" + port);
                 addSocket(nodeId, socket);
                 addRemoteMasterNode(new MasterNodePeer(nodeId, true));
-                initiateConnection(socket, self.getNodeId());
+                if(!initiateConnection(socket, self.getNodeId())) {
+                    break;
+                }
                 startMasterSocketIOThreads(nodeId, socket);
                 return true;
             } catch (IOException e) {
-                LOG.error("connect with " + nodeInfo.getIp() + " fail");
+                LOG.error("connect with " + ip + " fail");
                 retries++;
                 if (retries <= DEFAULT_RETRIES) {
                     LOG.info(String.format("connect with %s fail, retry to connect %s times",
-                            nodeInfo.getIp(), retries));
+                            ip, retries));
                 }
             }
         }
@@ -156,7 +164,7 @@ public class NetworkManager {
      * @param sock
      * @param sid
      */
-    public void initiateConnection(final Socket sock, final Integer sid) {
+    public boolean initiateConnection(final Socket sock, final Integer sid) {
         DataOutputStream dout;
         try {
             BufferedOutputStream buf = new BufferedOutputStream(sock.getOutputStream());
@@ -166,9 +174,11 @@ public class NetworkManager {
             dout.writeInt(sid);
             dout.writeInt(serverConfig.getIsControllerCandidate() ? 1 : 0);
             dout.flush();
+            return true;
         } catch (IOException e) {
             LOG.warn("Ignoring exception reading or writing challenge: ", e);
             closeSocket(sock);
+            return false;
         }
     }
 
@@ -182,7 +192,6 @@ public class NetworkManager {
         try {
             din = new DataInputStream(
                     new BufferedInputStream(sock.getInputStream()));
-//            int messageLength = din.readInt();
             remoteNodeId = din.readInt();
             boolean isControllerCandidate = din.readInt() == 1 ? true : false;
             nodeManager.updateNodeIsControllerCandidate(remoteNodeId, isControllerCandidate);
@@ -202,7 +211,6 @@ public class NetworkManager {
         try {
             din = new DataInputStream(
                     new BufferedInputStream(sock.getInputStream()));
-            int messageLength = din.readInt();
             remoteNodeId = din.readInt();
             addSocket(remoteNodeId, sock);
             addRemoteSlaveNode(new SlaveNodePeer(remoteNodeId));
@@ -219,12 +227,12 @@ public class NetworkManager {
      *
      * @return
      */
-    private List<NodePeer> getBeforeMasterNodes() {
+    private List<NodeAddress> getBeforeMasterNodes() {
         Integer nodeId = GovernServerConfig.getInstance().getNodeId();
-        List<NodePeer> beforeMasterNode = new ArrayList<>();
+        List<NodeAddress> beforeMasterNode = new ArrayList<>();
         ConfigurationParser configurationParser = ConfigurationParser.getInstance();
-        List<NodePeer> peers = configurationParser.parseMasterNodeServers();
-        for (NodePeer nodeInfo : peers) {
+        List<NodeAddress> peers = configurationParser.parseMasterNodeServers();
+        for (NodeAddress nodeInfo : peers) {
             if (nodeInfo.getNodeId() < nodeId) {
                 beforeMasterNode.add(nodeInfo);
             }
@@ -285,7 +293,7 @@ public class NetworkManager {
         }
     }
 
-    public NodePeer getSelf() {
+    public NodeAddress getSelf() {
         if (self != null) {
             return self;
         }
@@ -356,13 +364,13 @@ public class NetworkManager {
         @Override
         public void run() {
             while (NodeStatus.isRunning()) {
-                List<NodePeer> retryConnectSuccessNodes = new ArrayList<>();
-                for (NodePeer nodeInfo : retryConnectOtherMasterNodes) {
+                List<NodeAddress> retryConnectSuccessNodes = new ArrayList<>();
+                for (NodeAddress nodeInfo : retryConnectOtherMasterNodes) {
                     if (connectBeforeMasterNode(nodeInfo)) {
                         retryConnectSuccessNodes.add(nodeInfo);
                     }
                 }
-                for (NodePeer successNode : retryConnectSuccessNodes) {
+                for (NodeAddress successNode : retryConnectSuccessNodes) {
                     retryConnectOtherMasterNodes.remove(successNode);
                 }
                 try {

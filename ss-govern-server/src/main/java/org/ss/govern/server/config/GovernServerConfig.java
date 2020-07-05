@@ -4,8 +4,8 @@ import lombok.Getter;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.ss.govern.core.constants.NodeRole;
 import org.ss.govern.server.ConfigurationException;
-import org.ss.govern.server.node.NodePeer;
 
 import java.io.File;
 import java.io.FileInputStream;
@@ -27,7 +27,9 @@ public class GovernServerConfig {
     }
 
     private static class Singleton {
+
         static GovernServerConfig instance = new GovernServerConfig();
+
     }
 
     public static GovernServerConfig getInstance() {
@@ -50,15 +52,27 @@ public class GovernServerConfig {
     private Integer nodeId;
 
     /**
-     * 节点地址端口
+     * master节点时，对外监听的地址端口
      */
     @Getter
     private String nodeAddr;
 
     /**
      * 是否为controller候选节点
-     * */
+     */
     private Boolean isControllerCandidate;
+
+    /**
+     * slave节点时，对应的master节点地址
+     */
+    @Getter
+    private String masterNodeAddress;
+
+    /**
+     * slave节点时，对应的master节点端口
+     */
+    @Getter
+    private Integer masterNodePort;
 
     /**
      * 解析配置文件
@@ -79,31 +93,38 @@ public class GovernServerConfig {
                 }
             }
             String masterNodeServers = configProperties.getProperty("master.node.servers");
-            if(ConfigValidates.checkMasterNodeServers(masterNodeServers)) {
+            if (ConfigValidates.checkMasterNodeServers(masterNodeServers, nodeRole)) {
                 this.masterNodeServers = masterNodeServers;
-                if(LOG.isDebugEnabled()) {
+                if (LOG.isDebugEnabled()) {
                     LOG.debug("debug parameter value : master.node.servers=" + masterNodeServers);
                 }
             }
             String nodeId = configProperties.getProperty("node.id");
-            if(ConfigValidates.checkNodeId(nodeId)) {
+            if (ConfigValidates.checkNodeId(nodeId)) {
                 this.nodeId = Integer.valueOf(nodeId);
-                if(LOG.isDebugEnabled()) {
+                if (LOG.isDebugEnabled()) {
                     LOG.debug("debug parameter value : node.id=" + nodeId);
                 }
             }
             String isControllerCandidate = configProperties.getProperty("is.controller.candidate");
-            if(ConfigValidates.checkIsControllerCandidate(isControllerCandidate)) {
-                if(StringUtils.isEmpty(isControllerCandidate)) {
+            if (ConfigValidates.checkIsControllerCandidate(isControllerCandidate)) {
+                if (NodeRole.SLAVE.equals(nodeRole)) {
                     this.isControllerCandidate = Boolean.TRUE;
+                } else if (StringUtils.isEmpty(isControllerCandidate)
+                        && NodeRole.MASTER.equals(nodeRole)) {
+                    this.isControllerCandidate = Boolean.FALSE;
                 } else {
                     this.isControllerCandidate = Boolean.valueOf(isControllerCandidate);
-                    if(LOG.isDebugEnabled()) {
+                    if (LOG.isDebugEnabled()) {
                         LOG.debug("debug parameter value : is.controller.candidate=" + isControllerCandidate);
                     }
                 }
             }
             this.nodeAddr = configProperties.getProperty("node.address");
+            if(NodeRole.SLAVE.equals(nodeRole)) {
+                this.masterNodeAddress = configProperties.getProperty("master.node.address");
+                this.masterNodePort = Integer.valueOf(configProperties.getProperty("master.node.port"));
+            }
             LOG.info("successfully validation all configuration entries");
         } catch (IllegalArgumentException e) {
             throw new ConfigurationException("error processing " + configPath, e);
@@ -143,4 +164,5 @@ public class GovernServerConfig {
     public Boolean getIsControllerCandidate() {
         return isControllerCandidate;
     }
+
 }

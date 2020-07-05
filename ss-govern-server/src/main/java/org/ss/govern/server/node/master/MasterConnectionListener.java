@@ -4,7 +4,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.ss.govern.server.node.AbstractConnectionListener;
 import org.ss.govern.server.node.NetworkManager;
-import org.ss.govern.server.node.NodePeer;
+import org.ss.govern.server.node.NodeAddress;
 import org.ss.govern.server.node.NodeStatus;
 
 import java.net.Socket;
@@ -28,7 +28,7 @@ public class MasterConnectionListener extends AbstractConnectionListener {
     }
 
     private void init() {
-        NodePeer self = networkManager.getSelf();
+        NodeAddress self = networkManager.getSelf();
         if (self != null) {
             bindPort = self.getMasterConnectPort();
         } else {
