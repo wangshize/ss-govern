@@ -8,4 +8,5 @@ package org.ss.govern.core.constants;
 public class NodeRequestType {
 
     public static final int VOTE = 1;
+    public static final int SLOTS_ALLOCATION = 2;
 }

@@ -15,9 +15,6 @@ public class MasterNode {
 
     private static final Logger LOG = LoggerFactory.getLogger(MasterNode.class);
 
-
-    private ControllerCandidate controllerCandidate;
-
     private NetworkManager networkManager;
 
     private NodeManager nodeManager;
@@ -27,7 +24,6 @@ public class MasterNode {
     public MasterNode() {
         this.nodeManager = new NodeManager();
         this.networkManager = new NetworkManager(nodeManager);
-        this.controllerCandidate = new ControllerCandidate(networkManager, nodeManager);
         this.serverConfig = GovernServerConfig.getInstance();
     }
 
@@ -36,13 +32,22 @@ public class MasterNode {
         networkManager.waitOtherMasterNodesConnect();
         //连接id小于自己的master节点
         networkManager.connectOtherMasterNodes();
-        //等待大多数节点启动
-        networkManager.waitMostNodesConnected();
+        //等待所有数节点启动
+        networkManager.waitAllNodesConnected();
         //选举controller
         Boolean isControllerCandidate = serverConfig.getIsControllerCandidate();
         if (isControllerCandidate) {
+            ControllerCandidate controllerCandidate = new ControllerCandidate(networkManager, nodeManager);
             MasterNodeRole role = controllerCandidate.voteForControllerElection();
             LOG.info("vote finish, Current NodeRole is " + role);
+            if (MasterNodeRole.CONTROLLER.equals(role)) {
+                Controller controller = new Controller(nodeManager, networkManager);
+                controller.allocateSlots();
+            } else if (MasterNodeRole.CANDIDATE.equals(role)) {
+                Candidate candidate = new Candidate();
+            } else {
+                Observer observer = new Observer();
+            }
         }
         //启动线程监听slave节点发起的连接请求
         networkManager.waitSlaveNodeConnect();

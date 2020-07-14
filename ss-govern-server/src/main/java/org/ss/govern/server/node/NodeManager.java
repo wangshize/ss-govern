@@ -59,6 +59,10 @@ public class NodeManager {
         slaveNodePeerMap.put(slaveNodePeer.getNodeId(), slaveNodePeer);
     }
 
+    public List<MasterNodePeer> getAllRemoteMasterNodes() {
+        return new ArrayList<>(masterNodePeerMap.values());
+    }
+
     public List<MasterNodePeer> getOtherControllerCandidate() {
         Integer selfNodeId = serverConfig.getNodeId();
         List<MasterNodePeer> allOtherControllerCandidates = new ArrayList<>();

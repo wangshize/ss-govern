@@ -75,6 +75,12 @@ public class GovernServerConfig {
     private Integer masterNodePort;
 
     /**
+     * 数据存储目录
+     */
+    @Getter
+    private String dataDir;
+
+    /**
      * 解析配置文件
      *
      * @param configPath
@@ -125,6 +131,7 @@ public class GovernServerConfig {
                 this.masterNodeAddress = configProperties.getProperty("master.node.address");
                 this.masterNodePort = Integer.valueOf(configProperties.getProperty("master.node.port"));
             }
+            this.dataDir = configProperties.getProperty("data.dir");
             LOG.info("successfully validation all configuration entries");
         } catch (IllegalArgumentException e) {
             throw new ConfigurationException("error processing " + configPath, e);

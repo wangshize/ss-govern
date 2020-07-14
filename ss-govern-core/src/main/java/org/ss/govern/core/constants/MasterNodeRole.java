@@ -13,6 +13,10 @@ public enum MasterNodeRole {
    /**
     * controller候选人
     */
-   CANDIDATE;
+   CANDIDATE,
+   /**
+    * 普通节点
+    */
+   OBSERVER;
 
 }

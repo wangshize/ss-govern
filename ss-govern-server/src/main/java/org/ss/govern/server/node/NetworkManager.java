@@ -110,11 +110,10 @@ public class NetworkManager {
     /**
      * 等待大多数节点启动
      */
-    public void waitMostNodesConnected() {
+    public void waitAllNodesConnected() {
         //无需等待所有节点连接，只需要超过一半的节点建立成功即可开始选举
         Integer masterNumInCluster = nodeManager.getMasterNumInCluster();
-        int mostNodeNum = masterNumInCluster / 2 + 1;
-        while (NodeStatus.isRunning() && remoteNodeSockets.size() < mostNodeNum) {
+        while (NodeStatus.isRunning() && remoteNodeSockets.size() < masterNumInCluster) {
             LOG.info("wait for other node connect....");
             ThreadUtils.sleep(2000);
         }
