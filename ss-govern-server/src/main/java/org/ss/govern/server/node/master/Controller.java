@@ -1,9 +1,9 @@
 package org.ss.govern.server.node.master;
 
+import com.alibaba.fastjson.JSONObject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.ss.govern.core.constants.NodeRequestType;
-import org.ss.govern.core.constants.serializable.Iserializable;
 import org.ss.govern.server.config.GovernServerConfig;
 import org.ss.govern.server.node.NetworkManager;
 import org.ss.govern.server.node.NodeManager;
@@ -11,9 +11,10 @@ import org.ss.govern.server.node.NodeManager;
 import java.io.BufferedOutputStream;
 import java.io.DataOutputStream;
 import java.io.File;
-import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.nio.ByteBuffer;
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.zip.Adler32;
 import java.util.zip.Checksum;
@@ -29,8 +30,6 @@ public class Controller {
 
     private NetworkManager networkManager;
 
-    private Iserializable iserializable;
-
     private GovernServerConfig config = GovernServerConfig.getInstance();
 
     /**
@@ -43,9 +42,9 @@ public class Controller {
     private static final String SLOTS_ALLOCATION_FILENAME = "/slot_allocation";
 
     /**
-     * 槽位分配数据
+     * 槽位分配数据  value:nodeId
      */
-    private int[] slotsAllocation = new int[SLOTS_COUNT];
+    private List<Integer> slotsAllocation = new ArrayList<>(SLOTS_COUNT);
 
     public Controller(NodeManager nodeManager, NetworkManager networkManager) {
         this.nodeManager = nodeManager;
@@ -60,22 +59,26 @@ public class Controller {
         int totalRemoteMasterNodeCount = masterNodePeers.size();
         int slotsPerNode = SLOTS_COUNT / totalRemoteMasterNodeCount;
         //分配槽位
-        int startIndex = 1;
+        int slotIndex = 0;
+        //为所有远程节点分配槽位
         for (MasterNodePeer masterNodePeer : masterNodePeers) {
-            for (; startIndex <= slotsPerNode; startIndex++) {
-                slotsAllocation[startIndex] = masterNodePeer.getNodeId();
+            for (; slotIndex < slotsPerNode; slotIndex++) {
+                slotsAllocation.add(slotIndex, masterNodePeer.getNodeId());
             }
         }
-        for(;startIndex <= SLOTS_COUNT; startIndex++) {
-            slotsAllocation[startIndex] = config.getNodeId();
+        //剩余槽位分配给Controller
+        for(;slotIndex < SLOTS_COUNT; slotIndex++) {
+            slotsAllocation.add(slotIndex, config.getNodeId());
         }
         //持久化分配数据到磁盘
-        byte[] slotsByte = iserializable.serializable(slotsAllocation);
+        String jsonString = JSONObject.toJSONString(slotsAllocation);
+        byte[] slotsByte = jsonString.getBytes();
         persistSlotsAllocation(slotsByte, SLOTS_ALLOCATION_FILENAME);
         //将分配好的槽位发送给其他master节点
         for (MasterNodePeer masterNodePeer : masterNodePeers) {
+            int messageLength =  4 + slotsByte.length;
             ByteBuffer slotsAllocationByteBuffer =
-                    ByteBuffer.allocate(4 + 4 + slotsByte.length);
+                    ByteBuffer.allocate(messageLength);
             slotsAllocationByteBuffer.putInt(NodeRequestType.SLOTS_ALLOCATION);
             slotsAllocationByteBuffer.put(slotsByte);
             networkManager.sendMessage(masterNodePeer.getNodeId(), slotsAllocationByteBuffer);

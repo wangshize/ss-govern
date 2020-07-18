@@ -4,6 +4,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.ss.govern.core.constants.MasterNodeRole;
 import org.ss.govern.server.config.GovernServerConfig;
+import org.ss.govern.server.node.MessageReceiver;
 import org.ss.govern.server.node.NetworkManager;
 import org.ss.govern.server.node.NodeManager;
 import org.ss.govern.server.node.NodeStatus;
@@ -25,6 +26,8 @@ public class ControllerCandidate {
 
     private NetworkManager masterNetworkManager;
 
+    private MessageReceiver messageReceiver;
+
     private NodeManager remoteNodeManager;
 
     private GovernServerConfig serverConfig;
@@ -36,9 +39,11 @@ public class ControllerCandidate {
     private Integer selfId;
 
     public ControllerCandidate(NetworkManager masterNetworkManager,
-                               NodeManager remoteNodeManager) {
+                               NodeManager remoteNodeManager,
+                               MessageReceiver messageReceiver) {
         this.masterNetworkManager = masterNetworkManager;
         this.remoteNodeManager = remoteNodeManager;
+        this.messageReceiver = messageReceiver;
         this.serverConfig = GovernServerConfig.getInstance();
         this.selfId = serverConfig.getNodeId();
     }
@@ -76,8 +81,7 @@ public class ControllerCandidate {
             masterNetworkManager.sendMessage(remoteNodeId, vote.toRequestByteBuffer());
         }
         while (NodeStatus.isRunning()) {
-            ByteBuffer recvMsg = masterNetworkManager.takeMasterRecvMessage();
-            Vote recvVote = new Vote(recvMsg);
+            Vote recvVote = messageReceiver.takeVote();
             if(recvVote.getVoterId() == null) {
                 continue;
             }

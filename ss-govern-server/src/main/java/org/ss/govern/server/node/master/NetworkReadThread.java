@@ -62,7 +62,6 @@ public class NetworkReadThread extends Thread {
         while (NodeStatus.isRunning()) {
             try {
                 int messageLength = inputStream.readInt();
-                //todo  处理拆包问题
                 byte[] messageByte = new byte[messageLength];
                 inputStream.readFully(messageByte, 0, messageLength);
                 ByteBuffer messageBuffer = ByteBuffer.wrap(messageByte);

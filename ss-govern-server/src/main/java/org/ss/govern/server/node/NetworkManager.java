@@ -113,7 +113,7 @@ public class NetworkManager {
     public void waitAllNodesConnected() {
         //无需等待所有节点连接，只需要超过一半的节点建立成功即可开始选举
         Integer masterNumInCluster = nodeManager.getMasterNumInCluster();
-        while (NodeStatus.isRunning() && remoteNodeSockets.size() < masterNumInCluster) {
+        while (NodeStatus.isRunning() && remoteNodeSockets.size() < masterNumInCluster - 1) {
             LOG.info("wait for other node connect....");
             ThreadUtils.sleep(2000);
         }
@@ -312,7 +312,7 @@ public class NetworkManager {
         new NetworkReadThread(remoteNodeId, socket, masterQueueRecv,this).start();
     }
 
-    public void startSlvaeSocketIOThreads(Integer remoteNodeId, Socket socket) {
+    public void startSlaveSocketIOThreads(Integer remoteNodeId, Socket socket) {
         LinkedBlockingQueue<ByteBuffer> slaveQueueSend = new LinkedBlockingQueue<>();
         if(queueSendMap.putIfAbsent(remoteNodeId, slaveQueueSend) != null) {
             throw new IllegalArgumentException("nodeId : " + remoteNodeId + " is already exist");

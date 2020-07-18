@@ -33,12 +33,9 @@ public class Vote {
     }
 
     public Vote(ByteBuffer message) {
-        int requestType = message.getInt();
-        if(NodeRequestType.VOTE == requestType) {
-            this.voterId = message.getInt();
-            this.candidateId = message.getInt();
-            this.voteRound = message.getInt();
-        }
+        this.voterId = message.getInt();
+        this.candidateId = message.getInt();
+        this.voteRound = message.getInt();
     }
 
     public void nextRound() {

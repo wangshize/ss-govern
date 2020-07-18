@@ -43,7 +43,7 @@ public class SlaveConnectionListener extends AbstractConnectionListener {
         Integer remoteNodeId = networkManager.receiveSlaveConnection(client);
         LOG.info("accept slave node id : " + remoteNodeId);
         if (remoteNodeId != null) {
-            networkManager.startSlvaeSocketIOThreads(remoteNodeId, client);
+            networkManager.startSlaveSocketIOThreads(remoteNodeId, client);
         }
     }
 
