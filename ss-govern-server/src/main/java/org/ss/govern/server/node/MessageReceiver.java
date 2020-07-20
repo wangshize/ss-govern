@@ -12,6 +12,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.LinkedBlockingQueue;
 
 /**
+ * 通信数据接收组件
  * @author wangsz
  * @create 2020-07-15
  **/
